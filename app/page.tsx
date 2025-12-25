@@ -268,12 +268,35 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                             <h4 className="font-black text-sm">{item.icon} {item.title}</h4>
                             <p className="text-[10px] opacity-40 mt-1 leading-relaxed">{item.desc}</p>
                             {/* 行程編輯功能 (限 Wayne) */}
-                            {user.loginCode==='wayne' && (
-                                <div className="absolute top-4 right-4 flex gap-3 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={()=>{setPlanForm(item); setShowPlanModal({show:true,type:'edit',data:item});}} className="text-xs text-blue-400">🖋️</button>
-                                    <button onClick={()=>{if(confirm('刪除？')){const n=(schedules[activeDay]||[]).filter(p=>p.id!==item.id); const up={...schedules,[activeDay]:n}; setSchedules(up); sync({schedules:up});}}} className="text-xs text-red-400">🗑️</button>
-                                </div>
-                            )}
+                            {/* 行程編輯功能 (限 Wayne) */}
+{user.loginCode === 'wayne' && (
+    <div className="absolute top-4 right-4 flex gap-4 z-30 transition-opacity">
+        <button 
+            onClick={(e) => {
+                e.stopPropagation(); // 防止事件冒泡
+                setPlanForm(item); 
+                setShowPlanModal({show:true, type:'edit', data:item});
+            }} 
+            className="text-sm p-1 active:scale-90 transition-transform"
+        >
+            🖋️
+        </button>
+        <button 
+            onClick={(e) => {
+                e.stopPropagation(); // 防止事件冒泡
+                if(confirm('確定要刪除嗎？')){
+                    const n = (schedules[activeDay] || []).filter(p => p.id !== item.id); 
+                    const up = { ...schedules, [activeDay]: n }; 
+                    setSchedules(up); 
+                    sync({schedules: up});
+                }
+            }} 
+            className="text-sm p-1 active:scale-90 transition-transform"
+        >
+            🗑️
+        </button>
+    </div>
+)}
                         </div>
                     </div>
                 ))}
