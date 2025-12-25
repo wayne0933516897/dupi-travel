@@ -100,7 +100,6 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
         ))}
       </div>
 
-      {/* 使用者管理彈窗 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -119,7 +118,6 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
         </div>
       )}
 
-      {/* 編輯/新增使用者彈窗 (核心修復：含日誌功能) */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -136,7 +134,6 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
                 const timestamp = new Date().toLocaleString();
                 const newLogs = [...(editingMember.editLogs || []), `Updated by Admin at ${timestamp}`];
                 const finalMember = { ...editingMember, editLogs: newLogs };
-                // 確保數組更新邏輯不丟失資料
                 const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
@@ -158,7 +155,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [activeDay, setActiveDay] = useState(1);
   const [prepSubTab, setPrepSubTab] = useState('待辦');
   
-  // 資料狀態
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
   const [schedules, setSchedules] = useState<ScheduleData>({ 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] });
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -166,7 +162,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [flights, setFlights] = useState<Flight[]>([]);
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
 
-  // 介面狀態
   const [weatherData, setWeatherData] = useState({ temp: -8, pop: 15, precip: 0.8, advice: "極寒！請備好發熱衣與暖暖包。" });
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
@@ -174,11 +169,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [newJournal, setNewJournal] = useState({ content: '', image: '' });
   const [newTodoInput, setNewTodoInput] = useState({ task: '', assigneeIds: [] as string[] });
 
-  // 編輯視窗
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
 
-  // 1. 初始化資料同步 (Cloud to Local)
   useEffect(() => {
     const loadCloudData = async () => {
       const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
@@ -195,7 +188,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     loadCloudData();
   }, [tripData.id]);
 
-  // 2. 天氣連動日期邏輯 (核心功能)
   useEffect(() => {
     const temps = [-8, -5, -2, 0, -3, -6, -4, -1];
     const pops = [15, 80, 45, 20, 95, 30, 10, 65];
@@ -207,7 +199,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     });
   }, [activeDay]);
 
-  // 3. 同步至雲端 (Local to Cloud)
   const sync = async (update: any) => {
     const full = { records, schedules, todos, journals, flights, bookings, ...update };
     await supabase.from('trips').upsert({ id: tripData.id, content: full });
@@ -236,7 +227,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
         {/* --- [Tab: 行程] --- */}
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
-            {/* 天氣建議區塊 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden">
                 <h2 className="text-5xl font-mono tracking-tighter">{weatherData.temp}°C</h2>
                 <div className="flex justify-between items-end mt-2">
@@ -245,7 +235,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                 </div>
             </div>
             
-            {/* 日期切換按鈕 */}
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                 {[1,2,3,4,5,6,7,8].map(d=>(
                   <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-400 border border-gray-100'}`}>
@@ -255,7 +244,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                 ))}
             </div>
 
-            {/* 時間軸行程列表 */}
             <div className="mt-8 space-y-8 relative">
                 <div className="absolute left-[19px] top-0 bottom-0 w-0.5 border-dashed border-l border-gray-200"></div>
                 {(schedules[activeDay]||[]).sort((a,b)=>a.time.localeCompare(b.time)).map(item=>(
@@ -267,36 +255,32 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                         <div className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative group">
                             <h4 className="font-black text-sm">{item.icon} {item.title}</h4>
                             <p className="text-[10px] opacity-40 mt-1 leading-relaxed">{item.desc}</p>
-                            {/* 行程編輯功能 (限 Wayne) */}
-                            {/* 行程編輯功能 (限 Wayne) */}
-{user.loginCode === 'wayne' && (
-    <div className="absolute top-4 right-4 flex gap-4 z-30 transition-opacity">
-        <button 
-            onClick={(e) => {
-                e.stopPropagation(); // 防止事件冒泡
-                setPlanForm(item); 
-                setShowPlanModal({show:true, type:'edit', data:item});
-            }} 
-            className="text-sm p-1 active:scale-90 transition-transform"
-        >
-            🖋️
-        </button>
-        <button 
-            onClick={(e) => {
-                e.stopPropagation(); // 防止事件冒泡
-                if(confirm('確定要刪除嗎？')){
-                    const n = (schedules[activeDay] || []).filter(p => p.id !== item.id); 
-                    const up = { ...schedules, [activeDay]: n }; 
-                    setSchedules(up); 
-                    sync({schedules: up});
-                }
-            }} 
-            className="text-sm p-1 active:scale-90 transition-transform"
-        >
-            🗑️
-        </button>
-    </div>
-)}
+                            
+                            {/* 常駐顯示編輯功能 (限 Wayne, 行動裝置優化) */}
+                            {user.loginCode==='wayne' && (
+                                <div className="absolute top-4 right-4 flex gap-3 z-20">
+                                    <button 
+                                      onClick={(e)=>{
+                                        e.stopPropagation();
+                                        setPlanForm(item); 
+                                        setShowPlanModal({show:true,type:'edit',data:item});
+                                      }} 
+                                      className="text-xs text-blue-400 bg-blue-50 p-2 rounded-xl active:scale-90 transition-transform"
+                                    >🖋️</button>
+                                    <button 
+                                      onClick={(e)=>{
+                                        e.stopPropagation();
+                                        if(confirm('確定刪除此行程？')){
+                                          const n=(schedules[activeDay]||[]).filter(p=>p.id!==item.id); 
+                                          const up={...schedules,[activeDay]:n}; 
+                                          setSchedules(up); 
+                                          sync({schedules:up});
+                                        }
+                                      }} 
+                                      className="text-xs text-red-400 bg-red-50 p-2 rounded-xl active:scale-90 transition-transform"
+                                    >🗑️</button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -332,7 +316,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                     </div>
                 </div>
             ))}
-            {/* 憑證預訂顯示 */}
             <div className="space-y-4">
               {bookings.map(b=>(
                 <div key={b.id} className="bg-white p-6 rounded-[32px] shadow-xl border border-gray-50">
@@ -348,10 +331,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
           </div>
         )}
 
-        {/* --- [Tab: 記帳] (核心修復：個人統計與預覽) --- */}
+        {/* --- [Tab: 記帳] --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in">
-            {/* 1. 個人代墊統計 */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m => (
                 <div key={m.id} className="bg-white p-4 rounded-3xl shadow-sm border border-[#E0F2F1] relative">
@@ -364,14 +346,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
               ))}
             </div>
 
-            {/* 2. 總池與即時預覽 */}
             <div className="bg-[#E9C46A] rounded-[24px] p-6 mb-6 text-black shadow-md italic">
                 <p className="text-sm opacity-90 uppercase tracking-widest font-black">Total Spent</p>
                 <h2 className="text-4xl font-mono font-black">NT$ {records.reduce((sum, r) => sum + Number(r.twdAmount), 0).toLocaleString()}</h2>
                 {amount && <p className="text-[10px] mt-2 opacity-50 font-black tracking-widest">Converting: {amount} JPY ≈ NT$ {(Number(amount)*JPY_TO_TWD).toFixed(0)} TWD</p>}
             </div>
 
-            {/* 3. 新增消費紀錄 */}
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8">
                 <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="消費內容..." className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none font-black shadow-inner border-none" />
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -387,7 +367,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                 }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic tracking-widest">Save Record</button>
             </div>
 
-            {/* 4. 歷史紀錄 */}
             <div className="space-y-3 pb-10">
                 {records.map(r=>(
                     <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border pr-12 relative group">
@@ -396,14 +375,14 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                             <div className="text-xs font-black">{r.category}<p className="text-[9px] opacity-40 font-mono italic tracking-tighter">{getMember(r.payerId).name} · {r.date}</p></div>
                         </div>
                         <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">{r.amount} JPY<p className="text-[9px] text-gray-300">≈ NT$ {r.twdAmount}</p></div>
-                        <button onClick={()=>{if(confirm('刪除？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="absolute right-4 text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                        <button onClick={()=>{if(confirm('刪除？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="absolute right-4 text-red-300 active:scale-95 transition-all">✕</button>
                     </div>
                 ))}
             </div>
           </div>
         )}
 
-        {/* --- [Tab: 日誌] (社交流功能) --- */}
+        {/* --- [Tab: 日誌] --- */}
         {activeTab === '日誌' && (
           <div className="animate-in fade-in space-y-6">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50">
@@ -432,17 +411,15 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
           </div>
         )}
 
-        {/* --- [Tab: 準備] (核心修復：CRUD 操作) --- */}
+        {/* --- [Tab: 準備] --- */}
         {activeTab === '準備' && (
           <div className="animate-in fade-in">
-            {/* 分類切換 */}
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
                 {['待辦','行李','採購'].map(t=>(
                     <button key={t} onClick={()=>setPrepSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic ${prepSubTab===t?'bg-[#86A760] text-white shadow-md scale-105':'text-gray-300'}`}>{t}</button>
                 ))}
             </div>
 
-            {/* 新增待辦事項區塊 */}
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8">
                 <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增${prepSubTab}事項...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none font-black shadow-inner border-none" />
                 <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
@@ -457,13 +434,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                     if(!newTodoInput.task || newTodoInput.assigneeIds.length === 0) return alert("請填內容並指派旅伴");
                     const n = [{id:Date.now(), task:newTodoInput.task, assigneeIds:newTodoInput.assigneeIds, completedAssigneeIds:[], category:prepSubTab}, ...todos];
                     setTodos(n); sync({todos:n}); setNewTodoInput({task:'', assigneeIds:[]});
-                }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">ADD TO {prepSubTab}</button>
+                }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">ADD</button>
             </div>
 
-            {/* 事項清單 (含指派與刪除) */}
             <div className="space-y-4 pb-20">
                 {todos.filter(t=>t.category===prepSubTab).map(todo => (
-                    <div key={todo.id} className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group animate-in slide-in-from-left-2">
+                    <div key={todo.id} className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group">
                         <div className="flex flex-col flex-1 pr-4">
                             <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-20 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
                             <div className="flex gap-2 mt-3 flex-wrap">
@@ -480,14 +456,14 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                                 })}
                             </div>
                         </div>
-                        <button onClick={()=>{if(confirm('確認移除事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 hover:text-red-500 text-lg opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                        <button onClick={()=>{if(confirm('確認移除事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 p-2 active:scale-95">✕</button>
                     </div>
                 ))}
             </div>
           </div>
         )}
 
-        {/* --- [Tab: 成員] (日誌顯示) --- */}
+        {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20">
             <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black mb-4 tracking-widest">Trip Members</h3>
@@ -501,7 +477,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                         {(m.editLogs || []).slice(-3).reverse().map((log, i) => (
                             <p key={i} className="text-[9px] opacity-40 italic tracking-tighter">· {log}</p>
                         ))}
-                        {(!m.editLogs || m.editLogs.length === 0) && <p className="text-[9px] opacity-20 italic font-black">尚無異動紀錄</p>}
                     </div>
                 </div>
               </div>
@@ -510,10 +485,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
         )}
       </div>
 
-      {/* 行程編輯彈窗 (限 Wayne) */}
+      {/* 行程編輯彈窗 */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
-            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black">
+            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl font-black">
                 <h3 className="text-2xl mb-8 italic text-[#5E9E8E] uppercase tracking-tighter">Edit Travel Stop</h3>
                 <div className="flex gap-3 mb-6 bg-gray-50 rounded-2xl p-2 shadow-inner">
                     <select className="flex-1 p-4 bg-transparent outline-none text-xl" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
