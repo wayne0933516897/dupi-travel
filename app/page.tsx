@@ -9,20 +9,21 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZnlzdXVveGR1Z2lua2ZnZ2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2NDUxNjgsImV4cCI6MjA4MjIyMTE2OH0.igtMj90ihFLc3RIP0UGzXcUBxx4E16xMa9_HQcSfju8'
 );
 
-// --- 型別定義 (修正 Vercel 報錯處) ---
+// --- 型別定義 ---
 interface Member { id: string; name: string; avatar: string; loginCode: string; }
 interface ExpenseRecord { id: number; category: string; amount: string; currency: string; twdAmount: string; payMethod: string; payer: string; time: string; date: string; }
 interface Plan { id: number; time: string; title: string; desc: string; icon: string; }
 interface TodoItem { id: number; task: string; assigneeIds: string[]; note: string; completedAssigneeIds: string[]; category: string; }
 interface JournalEntry { id: number; author: string; content: string; date: string; image?: string; }
 interface Flight { id: number; airline: string; flightNo: string; from: string; fromCode: string; to: string; toCode: string; depTime: string; arrTime: string; duration: string; date: string; baggage: string; aircraft: string; }
-interface BookingDoc { id: number; type: string; title: string; content: string; image?: string; } // 這裡放寬為 string 避免編譯報錯
+// 修正型別錯誤：將 type 改為 string 寬鬆定義
+interface BookingDoc { id: number; type: string; title: string; content: string; image?: string; }
 interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; members: Member[]; }
 
 const JPY_TO_TWD = 0.22;
 const hokkaidoWeather: any = { 1: { date: "01/10", temp: "-5°C" }, 2: { date: "01/11", temp: "-7°C" }, 3: { date: "01/12", temp: "-3°C" }, 4: { date: "01/13", temp: "-4°C" }, 5: { date: "01/14", temp: "-6°C" }, 6: { date: "01/15", temp: "-8°C" }, 7: { date: "01/16", temp: "-2°C" }, 8: { date: "01/17", temp: "0°C" } };
 
-// --- 照片上傳組件 ---
+// --- 輔助組件：照片上傳 ---
 function ImageUploader({ onUpload, label }: { onUpload: (base64: string) => void, label: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +51,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
     <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-8 text-center font-sans">
       <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] mb-8 flex items-center justify-center text-4xl shadow-xl">❄️</div>
       <h1 className="text-3xl font-black text-black mb-2">肚皮旅遊</h1>
-      <p className="text-sm text-gray-400 font-bold mb-12 uppercase tracking-widest tracking-tighter">雲端部署穩定版</p>
+      <p className="text-sm text-gray-400 font-bold mb-12 uppercase tracking-widest tracking-tighter">多人雲端同步版</p>
       <input type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="請輸入代碼..." className="w-full max-w-xs p-5 bg-white rounded-[24px] mb-4 font-black text-black outline-none shadow-sm" />
       <button onClick={() => {
         const found = allMembers.find(m => m.loginCode === input);
@@ -61,7 +62,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
 }
 
 // ==========================================
-// 3. 旅行選擇頁 (肚皮管理權限)
+// 3. 旅行選擇頁
 // ==========================================
 function TripSelector({ user, onSelect, allMembers, setAllMembers }: { user: Member, onSelect: (trip: Trip) => void, allMembers: Member[], setAllMembers: any }) {
   const [trips] = useState<Trip[]>([
@@ -73,21 +74,18 @@ function TripSelector({ user, onSelect, allMembers, setAllMembers }: { user: Mem
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans">
       <div className="flex justify-between items-center mb-12">
-        <div><p className="text-xs text-gray-400 font-black tracking-tighter">WELCOME BACK,</p><h2 className="text-2xl font-black text-black">{user.name}</h2></div>
+        <div><p className="text-xs text-gray-400 font-black tracking-tighter uppercase">Welcome,</p><h2 className="text-2xl font-black text-black">{user.name}</h2></div>
         <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-sm"><img src={user.avatar} className="w-full h-full object-cover" /></div>
       </div>
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-sm font-black text-[#5E9E8E] uppercase tracking-tighter">旅遊清單</h3>
+        <h3 className="text-sm font-black text-[#5E9E8E] uppercase tracking-tighter">我的旅遊清單</h3>
         {user.loginCode === 'wayne' && <button onClick={() => setShowAddMember(true)} className="text-[10px] bg-blue-500 text-white px-3 py-1 rounded-full font-black">＋ 管理成員</button>}
       </div>
       <div className="space-y-6">
         {trips.map(trip => (
           <button key={trip.id} onClick={() => onSelect(trip)} className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-95 transition-all">
             <div className="w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl">{trip.emoji}</div>
-            <div className="flex-1 font-black text-black">
-              <h4 className="text-lg">{trip.title}</h4>
-              <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">{trip.startDate} ~ {trip.endDate}</p>
-            </div>
+            <div className="flex-1 font-black text-black"><h4 className="text-lg">{trip.title}</h4><p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">{trip.startDate} ~ {trip.endDate}</p></div>
           </button>
         ))}
       </div>
@@ -96,10 +94,10 @@ function TripSelector({ user, onSelect, allMembers, setAllMembers }: { user: Mem
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl">
             <h3 className="text-xl font-black mb-6 text-black italic">Member Setup</h3>
             <div className="flex flex-col items-center mb-6 gap-4">
-              <div className="w-20 h-20 rounded-full bg-gray-100 overflow-hidden border-2 border-dashed border-gray-300">
-                {memberForm.avatar ? <img src={memberForm.avatar} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-xs text-gray-400 font-black">無照片</div>}
-              </div>
-              <ImageUploader label="上傳成員照片" onUpload={(b64) => setMemberForm({...memberForm, avatar: b64})} />
+               <div className="w-20 h-20 rounded-full bg-gray-100 overflow-hidden border-2 border-dashed border-gray-300">
+                  {memberForm.avatar ? <img src={memberForm.avatar} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-xs text-gray-400 font-black">無照片</div>}
+               </div>
+               <ImageUploader label="上傳成員照片" onUpload={(b64) => setMemberForm({...memberForm, avatar: b64})} />
             </div>
             <input placeholder="名稱..." value={memberForm.name} onChange={e=>setMemberForm({...memberForm, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 font-black text-black outline-none" />
             <input placeholder="登錄代碼 (如 wayne)..." value={memberForm.loginCode} onChange={e=>setMemberForm({...memberForm, loginCode: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-6 font-black text-black outline-none" />
@@ -112,7 +110,7 @@ function TripSelector({ user, onSelect, allMembers, setAllMembers }: { user: Mem
 }
 
 // ==========================================
-// 4. 主程序 (主 UI 與 雲端連線)
+// 4. 主程序 (修復 setPayMethod 缺失錯誤)
 // ==========================================
 function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member, tripData: Trip }) {
   const [activeTab, setActiveTab] = useState('行程');
@@ -127,6 +125,7 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
   const [flights, setFlights] = useState<Flight[]>([]);
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
 
+  // 雲端連線
   useEffect(() => {
     const loadCloudData = async () => {
       const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
@@ -148,9 +147,11 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
     await supabase.from('trips').upsert({ id: tripData.id, content: fullData });
   };
 
+  // --- 介面狀態 ---
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [expensePayer, setExpensePayer] = useState(user.name);
+  const [payMethod, setPayMethod] = useState('現金'); // 修復點：新增 payMethod 狀態
   const [newJournal, setNewJournal] = useState({ id: null as number | null, content: '', image: '' });
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
@@ -160,7 +161,7 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] font-sans pb-32 text-black font-black">
-      {/* 頂部標題 */}
+      {/* 頂部導航 */}
       <div className="p-4 flex justify-between items-center sticky top-0 bg-[#F9F8F3]/90 backdrop-blur-md z-40">
         <div onClick={onBack} className="flex items-center gap-3 cursor-pointer group active:scale-95 transition-all">
           <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-100 text-black text-xl group-hover:bg-[#5E9E8E] group-hover:text-white transition-all">←</div>
@@ -195,8 +196,8 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
                 <div className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative min-h-[100px]">
                   <h4 className="font-bold text-sm mb-1 text-black">{item.icon} {item.title}</h4>
                   <p className="text-[10px] text-gray-500 leading-relaxed mb-6 whitespace-pre-wrap">{item.desc}</p>
-                  <div className="absolute bottom-3 right-4 flex gap-4">
-                    <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`)} className="text-[#5E9E8E] text-[10px] font-black italic">NAVIGATE</button>
+                  <div className="absolute bottom-3 right-4 flex gap-4 text-gray-300">
+                    <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`)} className="text-[#5E9E8E] text-[10px] font-black italic tracking-tighter">NAVIGATE</button>
                     <button onClick={() => { setPlanForm(item); setShowPlanModal({show:true, type:'edit', data:item}); }} className="text-xs">🖋️</button>
                     <button onClick={() => { if(confirm('要刪除嗎？')) { const n = (schedules[activeDay] || []).filter(p => p.id !== item.id); const up = {...schedules, [activeDay]: n}; setSchedules(up); syncToCloud({schedules: up}); } }} className="text-xs">🗑️</button>
                   </div>
@@ -208,7 +209,7 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
         </div>
       )}
 
-      {/* 預訂分頁 (含 Vercel 修復邏輯) */}
+      {/* 預訂分頁 */}
       {activeTab === '預訂' && (
         <div className="px-4">
           <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border">
@@ -218,7 +219,7 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
           </div>
           {bookSubTab === '機票' && (
             <div className="space-y-10">
-              <button onClick={() => setShowFlightModal({show:true, type:'add'})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-[32px] text-gray-400 font-black text-xs">+ 新增航班資訊</button>
+              <button onClick={() => setShowFlightModal({show:true, type:'add'})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-[32px] text-gray-400 font-black text-xs tracking-widest uppercase">+ ADD FLIGHT INFO</button>
               {flights.map(f => (
                 <div key={f.id} className="bg-white rounded-[40px] shadow-2xl overflow-hidden border border-blue-50 relative">
                   <div className="bg-[#f8faff] p-8 pb-10 border-b border-dashed border-blue-100 relative text-center">
@@ -240,11 +241,11 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
               <button onClick={() => { 
                 const title = prompt("憑證名稱:"); 
                 if(title) { 
-                  // 修正處：明確給予 type 字串轉型
+                  // 修正點：使用 string 轉型避免型別不相容
                   const n = [{id: Date.now(), type:'憑證' as string, title, content:'', image: prompt("照片網址:") || undefined}, ...bookings]; 
                   setBookings(n); syncToCloud({bookings:n}); 
                 } 
-              }} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-[32px] text-gray-400 font-black text-xs uppercase tracking-widest">+ ADD BOOKING VOUCHER</button>
+              }} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-[32px] text-gray-400 font-black text-xs uppercase tracking-widest">+ ADD VOUCHER</button>
               {bookings.map(b => (
                 <div key={b.id} className="bg-white rounded-[32px] p-6 shadow-xl border border-gray-50 relative overflow-hidden">
                   <div className="flex justify-between items-start mb-4"><h4 className="font-black text-black bg-orange-50 px-3 py-1 rounded-full text-xs italic tracking-tighter">🎫 {b.title}</h4><button onClick={() => { if(confirm('確定刪除？')) { const n = bookings.filter(i=>i.id!==b.id); setBookings(n); syncToCloud({bookings:n}); } }} className="text-xs text-gray-300">🗑️</button></div>
@@ -264,13 +265,14 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
               <div key={m.id} className="bg-white p-4 rounded-3xl shadow-sm border border-[#E0F2F1]"><p className="text-[10px] text-gray-400 uppercase tracking-widest italic">{m.name} PAY</p><p className="text-lg text-[#5E9E8E] font-mono tracking-tighter">NT$ {records.filter(r=>r.payer===m.name).reduce((s,r)=>s+Number(r.twdAmount),0).toLocaleString()}</p></div>
             ))}
           </div>
-          <div className="bg-[#E9C46A] rounded-[24px] p-6 mb-6 text-white shadow-md font-black tracking-tighter"><p className="text-sm opacity-90 italic uppercase">Total Expenses</p><h2 className="text-4xl font-mono">NT$ {records.reduce((sum, r) => sum + Number(r.twdAmount), 0).toLocaleString()}</h2></div>
+          <div className="bg-[#E9C46A] rounded-[24px] p-6 mb-6 text-white shadow-md font-black tracking-tighter"><p className="text-sm opacity-90 italic uppercase">TOTAL EXPENSES (TWD)</p><h2 className="text-4xl font-mono">NT$ {records.reduce((sum, r) => sum + Number(r.twdAmount), 0).toLocaleString()}</h2></div>
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 relative text-black">
-            <input value={category} onChange={e => setCategory(e.target.value)} placeholder="消費項目 (例: 豪華螃蟹餐)..." className="w-full p-4 bg-[#F2F1EB] rounded-2xl mb-4 outline-none font-black" />
+            <input value={category} onChange={e => setCategory(e.target.value)} placeholder="消費項目 (例: 豪華蟹肉餐)..." className="w-full p-4 bg-[#F2F1EB] rounded-2xl mb-4 outline-none font-black" />
             <div className="grid grid-cols-2 gap-4 mb-6 font-mono font-black text-2xl tracking-tighter overflow-hidden">
               <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" className="w-full p-4 bg-[#F2F1EB] rounded-2xl text-[#5E9E8E] outline-none" />
-              <div className="w-full p-4 bg-[#F2F1EB] rounded-2xl text-gray-300 flex items-center">≈ {(Number(amount)*JPY_TO_TWD).toFixed(0)}</div>
+              <div className="w-full p-4 bg-[#F2F1EB] rounded-2xl text-gray-300 flex items-center tracking-tighter">≈ {(Number(amount)*JPY_TO_TWD).toFixed(0)}</div>
             </div>
+            {/* 修復點：使用 setPayMethod 狀態 */}
             <div className="flex gap-1 mb-6 overflow-x-auto no-scrollbar">
               {['現金', '信用卡', 'PayPay', 'Suica'].map(p => <button key={p} onClick={() => setPayMethod(p)} className={`flex-shrink-0 px-3 py-2 rounded-lg text-[10px] border font-black ${payMethod === p ? 'border-[#E9C46A] bg-[#FFF9E5] text-[#E9C46A]' : 'border-gray-50 text-gray-300'}`}>{p}</button>)}
             </div>
@@ -278,12 +280,12 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
               if(!category || !amount) return;
               const rec = { id: Date.now(), category, amount, currency: 'JPY', twdAmount: (Number(amount)*JPY_TO_TWD).toFixed(0), payMethod, payer: expensePayer, time: '12:00', date: '今日' };
               const n = [rec, ...records]; setRecords(n); syncToCloud({records: n}); setAmount(''); setCategory('');
-            }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg tracking-widest uppercase">SAVE RECORD</button>
+            }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase tracking-widest">SAVE EXPENSE</button>
           </div>
           <div className="space-y-3 pb-10">
              {records.map(r => (
                <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm relative pr-20 border border-gray-50 font-black text-black">
-                 <div className="text-xs">{r.category} ({r.payMethod})<p className="opacity-50 font-normal font-mono text-[10px] mt-1 italic tracking-tighter">{r.payer} · {r.date}</p></div>
+                 <div className="text-xs">{r.category} ({r.payMethod})<p className="opacity-50 font-normal font-mono text-[10px] mt-1 italic">{r.payer} · {r.date}</p></div>
                  <div className="text-right text-[#5E9E8E] font-mono tracking-tighter">{r.amount} JPY</div>
                  <div className="absolute right-3 flex flex-col gap-2"><button onClick={() => { if(confirm('確定刪除紀錄？')) { const n = records.filter(i => i.id !== r.id); setRecords(n); syncToCloud({records: n}); } }} className="text-xs opacity-20 hover:opacity-100">🗑️</button></div>
                </div>
@@ -292,14 +294,14 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
         </div>
       )}
 
-      {/* 日誌分頁 (含編輯與照片功能) */}
+      {/* 日誌分頁 */}
       {activeTab === '日誌' && (
         <div className="px-4">
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 relative text-black">
             <h3 className="text-sm font-black mb-4 text-[#5E9E8E] uppercase tracking-tighter italic tracking-widest">{newJournal.id ? 'EDITING JOURNAL' : 'TODAY\'S JOURNAL'}</h3>
             <textarea value={newJournal.content} onChange={e => setNewJournal({...newJournal, content: e.target.value})} placeholder="記錄下此刻的心情..." className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none text-sm h-32 leading-relaxed font-black" />
             <div className="flex justify-between items-center">
-              <ImageUploader label="上傳隨手拍" onUpload={(b64) => setNewJournal({...newJournal, image: b64})} />
+              <button onClick={() => { const u = prompt("照片網址:"); if(u) setNewJournal({...newJournal, image: u}); }} className="text-[10px] bg-gray-100 px-3 py-2 rounded-xl font-black">📷 ADD PHOTO</button>
               <button onClick={() => {
                 if(!newJournal.content) return;
                 let n;
@@ -330,7 +332,7 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
         </div>
       )}
 
-      {/* 準備分頁 (行李、待辦、採購) */}
+      {/* 準備分頁 */}
       {activeTab === '準備' && (
         <div className="px-4">
           <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border">
@@ -382,14 +384,13 @@ function MainApp({ onBack, user, tripData }: { onBack: () => void, user: Member,
               <div key={m.id} className="bg-white p-10 rounded-[48px] shadow-2xl border border-gray-50 relative group overflow-hidden">
                 <div className="relative w-28 h-28 mx-auto mb-8 cursor-pointer active:scale-90 transition-all shadow-xl rounded-full"><img src={m.avatar} className="w-full h-full rounded-full border-4 border-[#F9F8F3] shadow-inner bg-gray-50 object-cover" /></div>
                 <p className="text-center font-black text-black text-xl tracking-tighter italic">{m.name}</p>
-                <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-[#86A760]/10 rounded-full blur-xl"></div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* 底部導航欄 */}
+      {/* 底部導航 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t flex justify-around p-4 shadow-2xl z-50">
         {[ {id:'行程', icon:'📅'}, {id:'預訂', icon:'📔'}, {id:'記帳', icon:'👛'}, {id:'日誌', icon:'🖋️'}, {id:'準備', icon:'💼'}, {id:'成員', icon:'👥'} ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 transition-all duration-300 ${activeTab === tab.id ? 'text-[#86A760] scale-125 font-black -translate-y-1' : 'opacity-25'}`}>
