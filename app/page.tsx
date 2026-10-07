@@ -105,7 +105,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
   );
 }
 
-// 2. 主畫面 (支援公告編輯、登出、行程隱私過濾)
+// 2. 主畫面
 function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, notice: string, onUpdateNotice: (n: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -129,7 +129,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32">
-      {/* 頂部 Header */}
       <div className="flex justify-between items-center mb-6 relative">
         <div className="font-black">
           <p className="text-xs text-gray-400 uppercase tracking-widest">{user.loginCode === 'wayne' ? 'Admin Mode,' : 'User Mode,'}</p>
@@ -160,7 +159,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       </div>
 
-      {/* 公告欄 */}
       <div className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-4 mb-8 flex justify-between items-center font-black">
         <div className="flex items-center gap-3 overflow-hidden">
           <span className="text-lg">📢</span>
@@ -302,7 +300,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [prepSubTab, setPrepSubTab] = useState('待辦');
   const [bookSubTab, setBookSubTab] = useState('機票'); 
 
-  // 記帳子分頁 (明細 vs 查帳統計)
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
 
@@ -316,13 +313,34 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
-
-  // 城市天氣設定
   const [cityConfigs, setCityConfigs] = useState<CityWeatherConfig[]>([]);
+
+  // 💥 解決閉包丟資料問題：利用 Ref 時時追蹤最新狀態，防止 sync 互相覆蓋
+  const stateRef = useRef({
+    records,
+    schedules,
+    todos,
+    journals,
+    flights,
+    bookings,
+    cityConfigs
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      records,
+      schedules,
+      todos,
+      journals,
+      flights,
+      bookings,
+      cityConfigs
+    };
+  }, [records, schedules, todos, journals, flights, bookings, cityConfigs]);
+
   const [newCityName, setNewCityName] = useState('');
   const [showCityEditor, setShowCityEditor] = useState(false);
 
-  // 天氣狀態
   const [weatherStatus, setWeatherStatus] = useState<{
     hasConfig: boolean;
     cityName: string;
@@ -340,33 +358,27 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     advice: '請先在下方新增城市並勾選日期以獲取即時天氣'
   });
 
-  // 成員加入/編輯 Modal 狀態
   const [showAddExistingModal, setShowAddExistingModal] = useState(false);
   const [editingMemberModal, setEditingMemberModal] = useState<Member | null>(null);
 
-  // 匯率狀態
   const [exchangeRates, setExchangeRates] = useState({ JPY: 0.22, TWD: 1.0, CNY: 4.5 });
   const [currency, setCurrency] = useState<'JPY' | 'TWD' | 'CNY'>('JPY');
 
-  // 需求 1: 預設選中日期邏輯 (若今天在旅行中預設今天，否則預設第一天)
   const defaultExpenseDate = useMemo(() => {
     const todayShort = getTodayShortDateString();
     if (dynamicTripDates.includes(todayShort)) return todayShort;
     return dynamicTripDates[0] || todayShort;
   }, [dynamicTripDates]);
 
-  // 記帳輸入狀態
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
   const [payMethod, setPayMethod] = useState('現金'); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
   const [expenseDate, setExpenseDate] = useState(defaultExpenseDate);
-  const [customOtherDate, setCustomOtherDate] = useState(getTodayDateString()); // 自訂旅行外日期
+  const [customOtherDate, setCustomOtherDate] = useState(getTodayDateString());
 
   const [newJournal, setNewJournal] = useState({ content: '', image: '' });
-  
-  // 準備頁面
   const [newTodoInput, setNewTodoInput] = useState({ task: '', note: '', assigneeIds: [user.id] as string[] });
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
@@ -411,12 +423,24 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     setFlights(c.flights || []);
     setBookings(c.bookings || []);
     if (c.cityConfigs) setCityConfigs(c.cityConfigs);
+    
+    // 更新本地快取，防止重整丟失
+    localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(c));
   };
 
+  // 載入行程雲端資料
   useEffect(() => {
+    // 先讀取本地快取防白屏
+    const cached = localStorage.getItem(`trip_cache_${tripData.id}`);
+    if (cached) {
+      try { updateLocalState(JSON.parse(cached)); } catch(e){}
+    }
+
     const loadCloudData = async () => {
-      const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
-      if (data?.content) updateLocalState(data.content);
+      const { data, error } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
+      if (data?.content) {
+        updateLocalState(data.content);
+      }
     };
     loadCloudData();
 
@@ -542,9 +566,19 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
+  // 💥 絕對安全同步函式：讀取 stateRef.current，防止舊狀態洗掉新資料
   const sync = async (update: any) => {
-    const full = { records, schedules, todos, journals, flights, bookings, cityConfigs, ...update };
-    await supabase.from('trips').upsert({ id: tripData.id, content: full });
+    const full = { ...stateRef.current, ...update };
+    stateRef.current = full;
+    
+    // 即刻快取本地
+    localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(full));
+    
+    // 寫入 Supabase 並檢查是否有權限錯誤
+    const { error } = await supabase.from('trips').upsert({ id: tripData.id, content: full });
+    if (error) {
+      console.error("Supabase 寫入失敗:", error);
+    }
   };
 
   const sortedFlights = useMemo(() => {
@@ -811,10 +845,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
           </div>
         )}
 
-        {/* --- [Tab: 記帳] (移除上方大看板，智慧日期選取 + 負數防護) --- */}
+        {/* --- [Tab: 記帳] --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
-            {/* 子頁面切換 */}
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
               <button onClick={() => setExpenseSubTab('明細')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '明細' ? 'bg-[#E9C46A] text-white shadow-md scale-105' : 'text-gray-300'}`}>記帳明細</button>
               <button onClick={() => setExpenseSubTab('查帳')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '查帳' ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'text-gray-300'}`}>📊 查帳統計</button>
@@ -822,10 +855,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
 
             {expenseSubTab === '明細' ? (
               <>
-                {/* 需求 1: 已移除上方大黃色 TOTAL SPENT 看板 */}
-
                 <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
-                    {/* 幣別切換 */}
                     <div className="flex gap-2 mb-4">
                       {(['JPY', 'TWD', 'CNY'] as const).map(c => (
                         <button
@@ -839,7 +869,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                       ))}
                     </div>
 
-                    {/* 需求 1: 記帳日期選取（預設當天 + 旅行期間外自訂日） */}
                     <p className="text-[10px] opacity-40 mb-2 ml-1">消費日期 (行程日與旅行外自訂)</p>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 items-center">
                       {dynamicTripDates.map((dStr, idx) => (
@@ -853,7 +882,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                         </button>
                       ))}
 
-                      {/* 旅行期間外日期按鈕 */}
                       <button
                         type="button"
                         onClick={() => {
@@ -866,7 +894,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                       </button>
                     </div>
 
-                    {/* 旅行外自訂日期選擇器 */}
                     {expenseDate.includes('旅行外') && (
                       <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
                         <span className="text-[10px] text-gray-400">選擇旅行外具體日期：</span>
@@ -887,16 +914,14 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                       {['早餐','午餐','晚餐','交通','娛樂','購物'].map(q=>(<button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-500 font-black shrink-0 active:bg-gray-200">{q}</button>))}
                     </div>
                     
-                    {/* 選填備註 */}
                     <input value={expenseNote} onChange={e=>setExpenseNote(e.target.value)} placeholder="備註說明 (選填)..." className="w-full p-3 bg-gray-50 rounded-xl mb-3 text-xs outline-none font-black shadow-inner border border-gray-100" />
                     
-                    {/* 需求 3: 金額限制為 0 以上，禁止負數 */}
                     <input 
                       type="number" 
                       min="0"
                       value={amount} 
                       onChange={e => {
-                        const val = e.target.value.replace('-', ''); // 嚴格去除負號
+                        const val = e.target.value.replace('-', '');
                         setAmount(val);
                       }} 
                       placeholder={`金額 (${currency}) - 請輸入大於 0 的正整數`} 
@@ -921,7 +946,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
 
                     <button onClick={()=>{
                         if(!category.trim()) return alert("請輸入消費內容！");
-                        // 需求 3: 嚴格驗證非負數
                         if(!amount || Number(amount) <= 0) return alert("金額必須大於 0，不能為負數或空白！");
                         if(!expensePayerId) return alert("請選擇付款人！");
 
@@ -1075,7 +1099,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black font-black">
                 <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black shadow-inner border-none" />
                 
-                <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black shadow-inner border border-gray-100" />
+                <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black shadow-inner border-none" />
                 
                 <p className="text-[10px] opacity-30 mb-2 ml-1">指派人員 (預選自己，可點選切換或複選)</p>
                 <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
@@ -1394,48 +1418,58 @@ export default function AppEntry() {
   const [selectedTrips, setSelectedTrips] = useState<Trip[]>([]);
   const [notice, setNotice] = useState<string>('');
 
-  // 核心同步載入函式
+  // 核心同步載入函式：保證登入、登出或重新整理絕不洗掉資料
   const fetchCloudData = async () => {
     // 1. 同步成員
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v6', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v7', JSON.stringify(mData.content));
     } else {
-      const defaultM: Member[] = [
-        { id:'1', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
-        { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
-      ];
-      setAllMembers(defaultM);
-      localStorage.setItem('app_members_v6', JSON.stringify(defaultM));
-      await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
+      const cachedM = localStorage.getItem('app_members_v7');
+      if (cachedM) {
+        setAllMembers(JSON.parse(cachedM));
+      } else {
+        const defaultM: Member[] = [
+          { id:'1', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
+          { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
+        ];
+        setAllMembers(defaultM);
+        localStorage.setItem('app_members_v7', JSON.stringify(defaultM));
+        await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
+      }
     }
 
     // 2. 同步行程
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       setSelectedTrips(tData.content);
-      localStorage.setItem('app_trips_v6', JSON.stringify(tData.content));
+      localStorage.setItem('app_trips_v7', JSON.stringify(tData.content));
     } else {
-      const today = getTodayDateString();
-      const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
-      setSelectedTrips(defaultT);
-      localStorage.setItem('app_trips_v6', JSON.stringify(defaultT));
-      await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
+      const cachedT = localStorage.getItem('app_trips_v7');
+      if (cachedT) {
+        setSelectedTrips(JSON.parse(cachedT));
+      } else {
+        const today = getTodayDateString();
+        const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
+        setSelectedTrips(defaultT);
+        localStorage.setItem('app_trips_v7', JSON.stringify(defaultT));
+        await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
+      }
     }
 
     // 3. 同步公告
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v6', nData.content);
+      localStorage.setItem('app_notice_v7', nData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v6');
-    const localT = localStorage.getItem('app_trips_v6');
-    const localN = localStorage.getItem('app_notice_v6');
+    const localM = localStorage.getItem('app_members_v7');
+    const localT = localStorage.getItem('app_trips_v7');
+    const localN = localStorage.getItem('app_notice_v7');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -1443,7 +1477,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v6')
+      .channel('app-global-sync-v7')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__)' },
@@ -1452,15 +1486,15 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v6', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v7', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v6', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v7', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v6', p.content);
+              localStorage.setItem('app_notice_v7', p.content);
             }
           }
         }
@@ -1474,27 +1508,27 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v6', JSON.stringify(newM));
+    localStorage.setItem('app_members_v7', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v6', JSON.stringify(next));
+    localStorage.setItem('app_trips_v7', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v6', JSON.stringify(next));
+    localStorage.setItem('app_trips_v7', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v6', n);
+    localStorage.setItem('app_notice_v7', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
@@ -1502,12 +1536,12 @@ export default function AppEntry() {
   const handleLogout = () => {
     setUser(null);
     setSelectedTrip(null);
-    fetchCloudData(); // 登出後重新抓取確認資料最新
+    fetchCloudData();
   };
 
   if (!user) return <LoginPage onLogin={(loggedUser) => {
     setUser(loggedUser);
-    fetchCloudData(); // 登入成功立即刷新保證最新
+    fetchCloudData();
   }} allMembers={allMembers} />;
   
   if (!selectedTrip) return (
