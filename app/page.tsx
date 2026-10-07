@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // --- Supabase 初始化 ---
@@ -19,11 +19,39 @@ interface Flight { id: number; airline: string; flightNo: string; fromCode: stri
 interface BookingDoc { id: number; type: string; title: string; image?: string; }
 interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; memberIds: string[]; }
 interface ScheduleData { [key: number]: Plan[]; }
+interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
 const JPY_TO_TWD = 0.22;
-const tripDates = ["01/10", "01/11", "01/12", "01/13", "01/14", "01/15", "01/16", "01/17"];
 
-// --- 輔助組件：圖片上傳 ---
+// 輔助函式：取得今天日期 YYYY-MM-DD
+function getTodayDateString(): string {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// 輔助函式：動態計算兩個日期間的所有日期字串 MM/DD
+function getDatesList(startStr: string, endStr: string): string[] {
+  if (!startStr || !endStr) return [];
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return [startStr.slice(5).replace('-', '/')];
+  }
+  const dates: string[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    dates.push(`${m}/${d}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+// 輔助組件：圖片上傳
 function ImageUploader({ onUpload, label }: { onUpload: (base64: string) => void, label: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,7 +91,17 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showUserAdmin, setShowUserAdmin] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [newTrip, setNewTrip] = useState<Trip>({ id: '', title: '', startDate: '2026-01-10', endDate: '2026-01-17', emoji: '☃️', memberIds: [user.id] });
+
+  // 問題 1 修正：建立新行程預設帶入當天日期
+  const todayStr = useMemo(() => getTodayDateString(), []);
+  const [newTrip, setNewTrip] = useState<Trip>({ 
+    id: '', 
+    title: '', 
+    startDate: todayStr, 
+    endDate: todayStr, 
+    emoji: '☃️', 
+    memberIds: [user.id] 
+  });
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32">
@@ -80,7 +118,11 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
       <div className="flex justify-between items-center mb-6 font-black">
         <h3 className="text-sm text-[#5E9E8E] uppercase italic">My Trips</h3>
         {user.loginCode === 'wayne' && (
-          <button onClick={() => setShowAddTrip(true)} className="text-[10px] bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg">+ NEW TRIP</button>
+          <button onClick={() => {
+            const today = getTodayDateString();
+            setNewTrip({ id: '', title: '', startDate: today, endDate: today, emoji: '☃️', memberIds: [user.id] });
+            setShowAddTrip(true);
+          }} className="text-[10px] bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg">+ NEW TRIP</button>
         )}
       </div>
 
@@ -120,7 +162,8 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
                   if(!newTrip.title) return alert("Please enter trip title");
                   onAddTrip({...newTrip, id: Date.now().toString()});
                   setShowAddTrip(false);
-                  setNewTrip({id:'', title:'', startDate:'2026-01-10', endDate:'2026-01-17', emoji:'☃️', memberIds:[user.id]});
+                  const today = getTodayDateString();
+                  setNewTrip({id:'', title:'', startDate: today, endDate: today, emoji:'☃️', memberIds:[user.id]});
                 }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic">Create Trip</button>
              </div>
           </div>
@@ -136,7 +179,7 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1">{m.name}<p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p></div>
+                  <div className="flex-1 font-black">{m.name}<p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p></div>
                   <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500">Edit</button>
                 </div>
               ))}
@@ -181,14 +224,28 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [prepSubTab, setPrepSubTab] = useState('待辦');
   const [bookSubTab, setBookSubTab] = useState('機票'); 
   
+  // 問題 2 修正：依據當前選擇 tripData 的開始與結束日期動態產生清單
+  const dynamicTripDates = useMemo(() => {
+    return getDatesList(tripData.startDate, tripData.endDate);
+  }, [tripData.startDate, tripData.endDate]);
+
+  const totalDays = dynamicTripDates.length || 1;
+
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleData>({ 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] });
+  const [schedules, setSchedules] = useState<ScheduleData>({});
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
 
-  const [weatherData, setWeatherData] = useState({ temp: -8, pop: 15, precip: 0.8, advice: "極寒！請備好發熱衣與暖暖包。" });
+  // 問題 3 新增：城市天氣自訂清單
+  const [cityConfigs, setCityConfigs] = useState<CityWeatherConfig[]>([
+    { id: '1', name: '札幌', dayIndexes: [1, 2, 3] },
+    { id: '2', name: '大阪', dayIndexes: [4, 5] }
+  ]);
+  const [newCityName, setNewCityName] = useState('');
+
+  const [weatherData, setWeatherData] = useState({ temp: 15, pop: 20, precip: 0.5, city: '當地', advice: '天氣舒適，早晚溫差大。' });
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [payMethod, setPayMethod] = useState('現金'); 
@@ -204,18 +261,17 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '', arrTime: '', duration: '', date: '', baggage: '', aircraft: '' });
 
-  // 統一更新本地 State
   const updateLocalState = (c: any) => {
     if (!c) return;
     setRecords(c.records || []);
-    setSchedules(c.schedules || {1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[]});
+    setSchedules(c.schedules || {});
     setTodos(c.todos || []);
     setJournals(c.journals || []);
     setFlights(c.flights || []);
     setBookings(c.bookings || []);
+    if (c.cityConfigs) setCityConfigs(c.cityConfigs);
   };
 
-  // 即時監聽與初始化讀取
   useEffect(() => {
     const loadCloudData = async () => {
       const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
@@ -225,7 +281,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     };
     loadCloudData();
 
-    // 建立 Realtime 監聽通道（支援全功能即時同步）
     const tripChannel = supabase
       .channel(`sync-trip-${tripData.id}`)
       .on(
@@ -249,24 +304,41 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     };
   }, [tripData.id]);
 
+  // 問題 3 修正：根據當天所屬的城市與日期動態計算天氣與建議
   useEffect(() => {
-    // MSN 截圖精確數值 (1/10 ~ 1/17)
-    const temps = [2, 4, -5, -1, -3, -2, -3, -1];
-    const pops = [92, 52, 66, 68, 53, 50, 49, 1];
-    const t = temps[activeDay-1] || 0;
-    const p = pops[activeDay-1] || 0;
-    let adviceText = "低溫且可能有雪，請穿著保暖發熱衣。";
-    if (t < 0) adviceText = "氣溫極低，建議穿著羽絨外套並備好發熱衣與暖暖包。";
-    if (p > 60) adviceText = "降雪/降雨機率高，請備妥雨具並穿著防滑防水鞋。";
+    const activeCityObj = cityConfigs.find(c => c.dayIndexes.includes(activeDay));
+    const cityName = activeCityObj ? activeCityObj.name : '當地';
+
+    // 依城市給予範例天氣與預估，可自由切換
+    let baseTemp = 18;
+    let basePop = 20;
+    let advice = '氣候宜人，建議穿著薄外套或長袖。';
+
+    if (cityName.includes('札幌') || cityName.includes('北海道')) {
+      baseTemp = -2;
+      basePop = 70;
+      advice = '北海道極冷且常有降雪，請穿著防風防水外套與發熱衣。';
+    } else if (cityName.includes('大阪') || cityName.includes('京都')) {
+      baseTemp = 19;
+      basePop = 25;
+      advice = '關西早晚微涼，適合洋蔥式穿法，備薄夾克即可。';
+    } else if (cityName.includes('東京')) {
+      baseTemp = 17;
+      basePop = 30;
+      advice = '天氣舒適，建議備妥長袖上衣與輕便外衣。';
+    }
 
     setWeatherData({
-      temp: t, pop: p, precip: Number((p/20).toFixed(1)),
-      advice: adviceText
+      temp: baseTemp,
+      pop: basePop,
+      precip: Number((basePop / 25).toFixed(1)),
+      city: cityName,
+      advice
     });
-  }, [activeDay]);
+  }, [activeDay, cityConfigs]);
 
   const sync = async (update: any) => {
-    const full = { records, schedules, todos, journals, flights, bookings, ...update };
+    const full = { records, schedules, todos, journals, flights, bookings, cityConfigs, ...update };
     await supabase.from('trips').upsert({ id: tripData.id, content: full });
   };
 
@@ -292,23 +364,105 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
       <div className="px-4 mt-4">
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
+            {/* 天氣看版 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden">
-                <h2 className="text-5xl font-mono tracking-tighter">{weatherData.temp}°C</h2>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-5xl font-mono tracking-tighter">{weatherData.temp}°C</h2>
+                  <span className="text-sm bg-white/20 px-3 py-1 rounded-full uppercase tracking-widest">{weatherData.city}</span>
+                </div>
                 <div className="flex justify-between items-end mt-2">
-                    <p className="text-[10px] uppercase opacity-60 font-black">Snow: {weatherData.pop}% | {weatherData.precip}mm</p>
+                    <p className="text-[10px] uppercase opacity-60 font-black">Rain/Snow: {weatherData.pop}% | {weatherData.precip}mm</p>
                     <p className="text-[10px] bg-white/20 px-3 py-1 rounded-full italic shadow-sm">💡 {weatherData.advice}</p>
                 </div>
             </div>
-            
-            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                {[1,2,3,4,5,6,7,8].map(d=>(
-                  <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-400 border border-gray-100'}`}>
-                    <span className="text-[10px]">{tripDates[d-1]}</span>
-                    <span className="text-xl">{d}</span>
+
+            {/* 問題 3 新增：城市與旅遊日對應設定區塊 */}
+            <div className="bg-white p-4 rounded-3xl mb-6 shadow-sm border border-gray-100 font-black">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider">🏙️ 城市與天氣排程</h4>
+                <div className="flex gap-2">
+                  <input 
+                    placeholder="輸入城市 (如: 大阪)..." 
+                    value={newCityName} 
+                    onChange={e => setNewCityName(e.target.value)} 
+                    className="p-1.5 px-3 bg-gray-50 rounded-xl text-xs outline-none border border-gray-100"
+                  />
+                  <button 
+                    onClick={() => {
+                      if (!newCityName.trim()) return;
+                      const next = [...cityConfigs, { id: Date.now().toString(), name: newCityName.trim(), dayIndexes: [activeDay] }];
+                      setCityConfigs(next);
+                      sync({ cityConfigs: next });
+                      setNewCityName('');
+                    }}
+                    className="bg-[#5E9E8E] text-white text-[10px] px-3 py-1.5 rounded-xl shadow-sm"
+                  >
+                    + 新增
                   </button>
+                </div>
+              </div>
+
+              {/* 城市列表與旅遊日勾選 */}
+              <div className="space-y-3">
+                {cityConfigs.map(c => (
+                  <div key={c.id} className="p-3 bg-gray-50 rounded-2xl flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-black text-black">📍 {c.name}</span>
+                      <button 
+                        onClick={() => {
+                          const next = cityConfigs.filter(item => item.id !== c.id);
+                          setCityConfigs(next);
+                          sync({ cityConfigs: next });
+                        }}
+                        className="text-red-400 text-xs"
+                      >
+                        ✕ 刪除
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-[10px] text-gray-400">待在此處的日期：</span>
+                      {dynamicTripDates.map((dStr, idx) => {
+                        const dayNum = idx + 1;
+                        const isChecked = c.dayIndexes.includes(dayNum);
+                        return (
+                          <label key={dayNum} className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl cursor-pointer transition-all ${isChecked ? 'bg-[#5E9E8E] text-white' : 'bg-white text-gray-400 border border-gray-200'}`}>
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked} 
+                              onChange={() => {
+                                const newDays = isChecked 
+                                  ? c.dayIndexes.filter(d => d !== dayNum) 
+                                  : [...c.dayIndexes, dayNum];
+                                const next = cityConfigs.map(item => item.id === c.id ? { ...item, dayIndexes: newDays } : item);
+                                setCityConfigs(next);
+                                sync({ cityConfigs: next });
+                              }}
+                              className="hidden"
+                            />
+                            {dStr} (D{dayNum})
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
+              </div>
+            </div>
+            
+            {/* 問題 2 修正：動態渲染每日按鈕 */}
+            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+                {dynamicTripDates.map((dateStr, idx) => {
+                  const d = idx + 1;
+                  return (
+                    <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-400 border border-gray-100'}`}>
+                      <span className="text-[10px]">{dateStr}</span>
+                      <span className="text-xl">{d}</span>
+                    </button>
+                  );
+                })}
             </div>
 
+            {/* 行程節點清單 */}
             <div className="mt-8 space-y-8 relative">
                 <div className="absolute left-[19px] top-0 bottom-0 w-0.5 border-dashed border-l border-gray-200"></div>
                 {(schedules[activeDay]||[]).sort((a,b)=>a.time.localeCompare(b.time)).map(item=>(
@@ -426,7 +580,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
 
                 <button onClick={()=>{
                     if(!category || !amount) return;
-                    const rec = {id:editingRecordId || Date.now(), category, amount, currency:'JPY', twdAmount:(Number(amount)*JPY_TO_TWD).toFixed(0), payMethod, payerId:expensePayerId, date:tripDates[activeDay-1]};
+                    const dateIndex = Math.min(activeDay - 1, dynamicTripDates.length - 1);
+                    const curDateStr = dynamicTripDates[dateIndex] || '未定';
+                    const rec = {id:editingRecordId || Date.now(), category, amount, currency:'JPY', twdAmount:(Number(amount)*JPY_TO_TWD).toFixed(0), payMethod, payerId:expensePayerId, date: curDateStr};
                     const n = editingRecordId ? records.map(r=>r.id===editingRecordId?rec:r) : [rec, ...records]; 
                     setRecords(n); sync({records:n}); setAmount(''); setCategory(''); setEditingRecordId(null);
                 }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic">{editingRecordId?'UPDATE':'SAVE'}</button>
@@ -451,7 +607,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
         )}
 
         {activeTab === '日誌' && (
-          <div className="animate-in fade-in space-y-6 pb-20 font-black">
+          <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
                 <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black border-none shadow-inner" />
                 <div className="flex justify-between items-center">
@@ -632,7 +788,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   );
 }
 
-// 4. 入口點 (完全不動)
+// 4. 入口點
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -648,7 +804,10 @@ export default function AppEntry() {
       {id:'2',name:'豆豆皮',avatar:'https://api.dicebear.com/7.x/bottts-neutral/svg?seed=elvina',loginCode:'Elvina', editLogs:['Account created']}
     ]);
     if (t) setSelectedTrips(JSON.parse(t)); 
-    else setSelectedTrips([{id:'hokkaido2026',title:'2026 北海道之旅',startDate:'2026-01-10',endDate:'2026-01-17',emoji:'☃️',memberIds:['1','2']}]);
+    else {
+      const today = getTodayDateString();
+      setSelectedTrips([{id:'hokkaido2026',title:'2026 日本之旅',startDate: today, endDate: today, emoji:'☃️',memberIds:['1','2']}]);
+    }
   }, []);
 
   useEffect(() => { 
