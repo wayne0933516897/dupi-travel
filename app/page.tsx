@@ -136,7 +136,7 @@ function TripSelector({ user, onSelect, allTrips, onAddTrip, onDeleteTrip, allMe
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1 font-black">{m.name}<p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p></div>
+                  <div className="flex-1">{m.name}<p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p></div>
                   <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500">Edit</button>
                 </div>
               ))}
@@ -204,7 +204,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '', arrTime: '', duration: '', date: '', baggage: '', aircraft: '' });
 
-  // 統一更新本地 State 的函式
+  // 統一更新本地 State
   const updateLocalState = (c: any) => {
     if (!c) return;
     setRecords(c.records || []);
@@ -215,38 +215,34 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     setBookings(c.bookings || []);
   };
 
-  // --- 核心修正：即時監聽邏輯 ---
+  // 即時監聽與初始化讀取
   useEffect(() => {
-    // 1. 初始化讀取
     const loadCloudData = async () => {
-      const { data, error } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
+      const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
       if (data?.content) {
         updateLocalState(data.content);
       }
     };
     loadCloudData();
 
-    // 2. 建立 Realtime 訂閱 (精確對齊 Supabase 標準)
+    // 建立 Realtime 監聽通道（支援全功能即時同步）
     const tripChannel = supabase
       .channel(`sync-trip-${tripData.id}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'trips',
           filter: `id=eq.${tripData.id}`
         },
         (payload) => {
-          console.log('雲端資料已變動，同步中...', payload);
           if (payload.new && (payload.new as any).content) {
             updateLocalState((payload.new as any).content);
           }
         }
       )
-      .subscribe((status) => {
-        console.log('Realtime 訂閱狀態:', status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(tripChannel);
@@ -254,8 +250,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   }, [tripData.id]);
 
   useEffect(() => {
+    // MSN 截圖精確數值 (1/10 ~ 1/17)
     const temps = [2, 4, -5, -1, -3, -2, -3, -1];
-    const pops = [92, 39, 65, 68, 53, 50, 49, 1];
+    const pops = [92, 52, 66, 68, 53, 50, 49, 1];
     const t = temps[activeDay-1] || 0;
     const p = pops[activeDay-1] || 0;
     let adviceText = "低溫且可能有雪，請穿著保暖發熱衣。";
@@ -454,7 +451,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
         )}
 
         {activeTab === '日誌' && (
-          <div className="animate-in fade-in space-y-6 pb-20">
+          <div className="animate-in fade-in space-y-6 pb-20 font-black">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
                 <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black border-none shadow-inner" />
                 <div className="flex justify-between items-center">
@@ -549,7 +546,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
             {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m => (
               <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-50 font-black">
                 <img src={m.avatar} className="w-16 h-16 rounded-[24px] object-cover border-2 border-white shadow-md font-black" />
-                <div className="flex-1 font-black">
+                <div className="flex-1">
                     <h4 className="text-lg text-black font-black">{m.name}</h4>
                     <div className="mt-3 space-y-1.5">
                         <p className="text-[9px] text-gray-400 uppercase tracking-widest font-black">History Logs:</p>
@@ -567,7 +564,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black">
-                <h3 className="text-2xl mb-8 italic text-[#5E9E8E] uppercase tracking-tighter font-black">Edit Travel Stop</h3>
+                <h3 className="text-2xl mb-8 italic text-[#5E9E8E] uppercase tracking-tighter">Edit Travel Stop</h3>
                 <div className="flex gap-3 mb-6 bg-gray-50 rounded-2xl p-2 shadow-inner">
                     <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
                         {Array.from({length: 24}).map((_,i)=><option key={i} value={i.toString().padStart(2,'0')}>{i.toString().padStart(2,'0')} 點</option>)}
@@ -606,7 +603,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
       {showFlightModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-2xl mb-6 italic text-[#5E9E8E] uppercase tracking-tighter font-black">{showFlightModal.type === 'add' ? 'Add' : 'Edit'} Flight</h3>
+            <h3 className="text-2xl mb-6 italic text-[#5E9E8E] uppercase tracking-tighter">{showFlightModal.type === 'add' ? 'Add' : 'Edit'} Flight</h3>
             <div className="space-y-4">
               <input placeholder="Airline" value={flightForm.airline} onChange={e=>setFlightForm({...flightForm, airline:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none" />
               <input placeholder="Flight No." value={flightForm.flightNo} onChange={e=>setFlightForm({...flightForm, flightNo:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none" />
