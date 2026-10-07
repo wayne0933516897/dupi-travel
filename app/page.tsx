@@ -21,6 +21,7 @@ interface Trip { id: string; title: string; startDate: string; endDate: string; 
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
+// 可愛動物頭像清單
 const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Bear&backgroundColor=b6e3f4',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Panda&backgroundColor=c0aede',
@@ -105,7 +106,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
 }
 
 // 2. 主畫面
-function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, notice: string, onUpdateNotice: (n: string) => void }) {
+function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showUserAdmin, setShowUserAdmin] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -282,6 +283,12 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
+                
+                // 💥 若修改的是當前登入者，同步首頁狀態
+                if (finalMember.id === user.id) {
+                  onUpdateUser(finalMember);
+                }
+
                 setEditingMember(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic">Save</button>
             </div>
@@ -293,7 +300,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
 }
 
 // 3. 主程式元件
-function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void }) {
+function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
   const [prepSubTab, setPrepSubTab] = useState('待辦');
@@ -302,7 +309,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
 
-  // 💥 解決畫面不同步：在 MainApp 內部建立成員清單的即時 State
   const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
 
   const dynamicTripDates = useMemo(() => {
@@ -459,7 +465,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     };
   }, [tripData.id]);
 
-  // 天氣預報讀取
   useEffect(() => {
     const activeCityObj = cityConfigs.find(c => c.dayIndexes.includes(activeDay));
     if (!activeCityObj) {
@@ -563,7 +568,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 安全同步函式
   const sync = async (update: any) => {
     const full = { ...stateRef.current, ...update };
     stateRef.current = full;
@@ -575,7 +579,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     }
   };
 
-  // 💥 解決成員變更即時反應的專用函式
   const handleUpdateTripMembers = (newMemberIds: string[]) => {
     setCurrentMemberIds(newMemberIds);
     const updatedTrip = { ...tripData, memberIds: newMemberIds };
@@ -846,7 +849,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 記帳] --- */}
+        {/* --- [Tab: 記帳] (送出完成提示) --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -964,7 +967,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           lastUpdatedById: user.id
                         };
                         const n = editingRecordId ? records.map(r=>r.id===editingRecordId?rec:r) : [rec, ...records]; 
-                        setRecords(n); sync({records:n}); setAmount(''); setCategory(''); setExpenseNote(''); setEditingRecordId(null);
+                        setRecords(n); sync({records:n}); 
+                        
+                        // 💥 需求 2: 記帳完成跳出成功訊息
+                        alert(editingRecordId ? "✅ 記帳紀錄已更新！" : "✅ 記帳成功！");
+
+                        setAmount(''); setCategory(''); setExpenseNote(''); setEditingRecordId(null);
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic">{editingRecordId?'UPDATE':'SAVE'}</button>
                 </div>
 
@@ -1161,7 +1169,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 成員] (加入與移除旅伴秒級響應) --- */}
+        {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
             <div className="flex justify-between items-center mb-4">
@@ -1202,7 +1210,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         🖋️ 編輯
                       </button>
                     )}
-                    {/* 移除旅伴即時消失 */}
                     {user.loginCode === 'wayne' && m.loginCode !== 'wayne' && (
                       <button 
                         onClick={() => {
@@ -1224,7 +1231,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         )}
       </div>
 
-      {/* 💥 加入現有成員彈窗（含確認提示與即時畫面切換） */}
+      {/* 加入現有成員彈窗 */}
       {showAddExistingModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1263,7 +1270,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 成員編輯 Modal */}
+      {/* 成員編輯 Modal (連動更新主頁 User) */}
       {editingMemberModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1319,6 +1326,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 const nextMembers = allMembers.map(m => m.id === finalMember.id ? finalMember : m);
 
                 onUpdateMembers(nextMembers);
+                
+                // 💥 需求 1: 若修改的對象是當前登入者，同步主頁面 user 狀態
+                if (finalMember.id === user.id) {
+                  onUpdateUser(finalMember);
+                }
+
                 sync({});
                 setEditingMemberModal(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">儲存成員</button>
@@ -1423,7 +1436,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   );
 }
 
-// 4. 入口點
+// 4. 入口點 (同步連動更新當前登入者資訊)
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -1538,7 +1551,6 @@ export default function AppEntry() {
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
-  // 💥 解決行程成員更新即時同步到 __app_trips__
   const handleUpdateTrip = async (updated: Trip) => {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
@@ -1574,6 +1586,7 @@ export default function AppEntry() {
       onAddTrip={handleAddTrip} 
       onDeleteTrip={handleDeleteTrip} 
       onUpdateMembers={handleUpdateMembers} 
+      onUpdateUser={setUser}
       notice={notice}
       onUpdateNotice={handleUpdateNotice}
     />
@@ -1586,6 +1599,7 @@ export default function AppEntry() {
       allMembers={allMembers} 
       onUpdateMembers={handleUpdateMembers} 
       onUpdateTrip={handleUpdateTrip}
+      onUpdateUser={setUser}
       onBack={() => setSelectedTrip(null)} 
     />
   );
