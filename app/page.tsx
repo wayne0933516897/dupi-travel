@@ -21,7 +21,6 @@ interface Trip { id: string; title: string; startDate: string; endDate: string; 
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
-// 可愛動物頭像清單
 const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Bear&backgroundColor=b6e3f4',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Panda&backgroundColor=c0aede',
@@ -294,7 +293,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
 }
 
 // 3. 主程式元件
-function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any }) {
+function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
   const [prepSubTab, setPrepSubTab] = useState('待辦');
@@ -302,6 +301,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
 
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
+
+  // 💥 解決畫面不同步：在 MainApp 內部建立成員清單的即時 State
+  const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
 
   const dynamicTripDates = useMemo(() => {
     return getDatesList(tripData.startDate, tripData.endDate);
@@ -315,7 +317,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
   const [cityConfigs, setCityConfigs] = useState<CityWeatherConfig[]>([]);
 
-  // 💥 解決閉包丟資料問題：利用 Ref 時時追蹤最新狀態，防止 sync 互相覆蓋
   const stateRef = useRef({
     records,
     schedules,
@@ -423,21 +424,17 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     setFlights(c.flights || []);
     setBookings(c.bookings || []);
     if (c.cityConfigs) setCityConfigs(c.cityConfigs);
-    
-    // 更新本地快取，防止重整丟失
     localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(c));
   };
 
-  // 載入行程雲端資料
   useEffect(() => {
-    // 先讀取本地快取防白屏
     const cached = localStorage.getItem(`trip_cache_${tripData.id}`);
     if (cached) {
       try { updateLocalState(JSON.parse(cached)); } catch(e){}
     }
 
     const loadCloudData = async () => {
-      const { data, error } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
+      const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
       if (data?.content) {
         updateLocalState(data.content);
       }
@@ -566,19 +563,23 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 💥 絕對安全同步函式：讀取 stateRef.current，防止舊狀態洗掉新資料
+  // 安全同步函式
   const sync = async (update: any) => {
     const full = { ...stateRef.current, ...update };
     stateRef.current = full;
-    
-    // 即刻快取本地
     localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(full));
-    
-    // 寫入 Supabase 並檢查是否有權限錯誤
-    const { error } = await supabase.from('trips').upsert({ id: tripData.id, content: full });
-    if (error) {
-      console.error("Supabase 寫入失敗:", error);
+    try {
+      await supabase.from('trips').upsert({ id: tripData.id, content: full });
+    } catch(e) {
+      console.warn("Sync warning", e);
     }
+  };
+
+  // 💥 解決成員變更即時反應的專用函式
+  const handleUpdateTripMembers = (newMemberIds: string[]) => {
+    setCurrentMemberIds(newMemberIds);
+    const updatedTrip = { ...tripData, memberIds: newMemberIds };
+    onUpdateTrip(updatedTrip);
   };
 
   const sortedFlights = useMemo(() => {
@@ -603,7 +604,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
           <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter">DUPI TRAVEL</h1>
         </div>
         <div className="flex -space-x-2">
-          {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m=>(
+          {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
             <div key={m.id} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-md">
               <img src={m.avatar} className="w-full h-full object-cover" />
             </div>
@@ -937,7 +938,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
 
                     <p className="text-[10px] opacity-30 mb-2 ml-2">PAYER (付款人)</p>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
-                      {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m=>(
+                      {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
                         <button key={m.id} onClick={()=>setExpensePayerId(m.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-400'}`}>
                           <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" /> {m.name}
                         </button>
@@ -1002,7 +1003,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                     >
                       全部成員
                     </button>
-                    {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m => {
+                    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
                       const isSel = filterPayerIds.includes(m.id);
                       return (
                         <button
@@ -1103,7 +1104,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                 
                 <p className="text-[10px] opacity-30 mb-2 ml-1">指派人員 (預選自己，可點選切換或複選)</p>
                 <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
-                    {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m=>(
+                    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
                         <button key={m.id} onClick={()=>{
                             const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
                             setNewTodoInput({...newTodoInput, assigneeIds: ids});
@@ -1160,7 +1161,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
           </div>
         )}
 
-        {/* --- [Tab: 成員] --- */}
+        {/* --- [Tab: 成員] (加入與移除旅伴秒級響應) --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
             <div className="flex justify-between items-center mb-4">
@@ -1175,7 +1176,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
               )}
             </div>
 
-            {allMembers.filter(m=>tripData.memberIds.includes(m.id)).map(m => {
+            {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
               const canEditThisMember = user.loginCode === 'wayne' || user.id === m.id;
               return (
                 <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-50 font-black relative">
@@ -1201,13 +1202,13 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
                         🖋️ 編輯
                       </button>
                     )}
+                    {/* 移除旅伴即時消失 */}
                     {user.loginCode === 'wayne' && m.loginCode !== 'wayne' && (
                       <button 
                         onClick={() => {
                           if (confirm(`確定將 ${m.name} 從此行程移除？其建立的記錄仍會完整保留。`)) {
-                            const nextIds = tripData.memberIds.filter(id => id !== m.id);
-                            tripData.memberIds = nextIds;
-                            sync({});
+                            const nextIds = currentMemberIds.filter(id => id !== m.id);
+                            handleUpdateTripMembers(nextIds);
                           }
                         }}
                         className="bg-red-50 hover:bg-red-100 text-xs px-3 py-2 rounded-2xl text-red-500 font-black"
@@ -1223,7 +1224,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
         )}
       </div>
 
-      {/* 加入現有成員彈窗 */}
+      {/* 💥 加入現有成員彈窗（含確認提示與即時畫面切換） */}
       {showAddExistingModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1231,16 +1232,28 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
             <p className="text-[10px] text-gray-400 text-center mb-6">新增全新用戶請回到最開始的主畫面 ADMIN MODE</p>
             <div className="space-y-3 max-h-60 overflow-y-auto mb-6">
               {allMembers.map(m => {
-                const isSelected = tripData.memberIds.includes(m.id);
+                const isSelected = currentMemberIds.includes(m.id);
                 return (
-                  <div key={m.id} onClick={() => {
-                    const nextIds = isSelected ? tripData.memberIds.filter(id => id !== m.id) : [...tripData.memberIds, m.id];
-                    tripData.memberIds = nextIds;
-                    sync({});
-                  }} className={`p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-all ${isSelected ? 'bg-green-50 border border-[#86A760]' : 'bg-gray-50'}`}>
+                  <div 
+                    key={m.id} 
+                    onClick={() => {
+                      if (isSelected) {
+                        if (confirm(`確定要將「${m.name}」從本行程移除嗎？`)) {
+                          const nextIds = currentMemberIds.filter(id => id !== m.id);
+                          handleUpdateTripMembers(nextIds);
+                        }
+                      } else {
+                        if (confirm(`確定要將「${m.name}」加入本行程嗎？`)) {
+                          const nextIds = [...currentMemberIds, m.id];
+                          handleUpdateTripMembers(nextIds);
+                        }
+                      }
+                    }} 
+                    className={`p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-all ${isSelected ? 'bg-green-50 border border-[#86A760]' : 'bg-gray-50'}`}
+                  >
                     <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                    <span className="flex-1 text-sm">{m.name}</span>
-                    <span className="text-xs">{isSelected ? '✓ 已在行程中' : '+ 加入'}</span>
+                    <span className="flex-1 text-sm font-black">{m.name}</span>
+                    <span className="text-xs font-black">{isSelected ? '✓ 已在行程中 (點擊移除)' : '+ 點擊加入'}</span>
                   </div>
                 );
               })}
@@ -1410,7 +1423,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers }: { onBa
   );
 }
 
-// 4. 入口點 (強化持久儲存與登出登入一致性)
+// 4. 入口點
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -1418,15 +1431,14 @@ export default function AppEntry() {
   const [selectedTrips, setSelectedTrips] = useState<Trip[]>([]);
   const [notice, setNotice] = useState<string>('');
 
-  // 核心同步載入函式：保證登入、登出或重新整理絕不洗掉資料
   const fetchCloudData = async () => {
     // 1. 同步成員
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v7', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v8', JSON.stringify(mData.content));
     } else {
-      const cachedM = localStorage.getItem('app_members_v7');
+      const cachedM = localStorage.getItem('app_members_v8');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -1435,7 +1447,7 @@ export default function AppEntry() {
           { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v7', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v8', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -1444,16 +1456,16 @@ export default function AppEntry() {
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       setSelectedTrips(tData.content);
-      localStorage.setItem('app_trips_v7', JSON.stringify(tData.content));
+      localStorage.setItem('app_trips_v8', JSON.stringify(tData.content));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v7');
+      const cachedT = localStorage.getItem('app_trips_v8');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v7', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v8', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -1462,14 +1474,14 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v7', nData.content);
+      localStorage.setItem('app_notice_v8', nData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v7');
-    const localT = localStorage.getItem('app_trips_v7');
-    const localN = localStorage.getItem('app_notice_v7');
+    const localM = localStorage.getItem('app_members_v8');
+    const localT = localStorage.getItem('app_trips_v8');
+    const localN = localStorage.getItem('app_notice_v8');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -1477,7 +1489,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v7')
+      .channel('app-global-sync-v8')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__)' },
@@ -1486,15 +1498,15 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v7', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v8', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v7', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v8', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v7', p.content);
+              localStorage.setItem('app_notice_v8', p.content);
             }
           }
         }
@@ -1508,31 +1520,39 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v7', JSON.stringify(newM));
+    localStorage.setItem('app_members_v8', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v7', JSON.stringify(next));
+    localStorage.setItem('app_trips_v8', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v7', JSON.stringify(next));
+    localStorage.setItem('app_trips_v8', JSON.stringify(next));
+    await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
+  };
+
+  // 💥 解決行程成員更新即時同步到 __app_trips__
+  const handleUpdateTrip = async (updated: Trip) => {
+    const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
+    setSelectedTrips(next);
+    setSelectedTrip(updated);
+    localStorage.setItem('app_trips_v8', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v7', n);
+    localStorage.setItem('app_notice_v8', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
-  // 登出處理
   const handleLogout = () => {
     setUser(null);
     setSelectedTrip(null);
@@ -1565,6 +1585,7 @@ export default function AppEntry() {
       tripData={selectedTrip} 
       allMembers={allMembers} 
       onUpdateMembers={handleUpdateMembers} 
+      onUpdateTrip={handleUpdateTrip}
       onBack={() => setSelectedTrip(null)} 
     />
   );
