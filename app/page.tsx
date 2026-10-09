@@ -17,7 +17,7 @@ interface TodoItem { id: number; task: string; note?: string; assigneeIds: strin
 interface JournalEntry { id: number; authorId: string; content: string; date: string; image?: string; lastUpdatedById?: string; }
 interface Flight { id: number; airline: string; flightNo: string; fromCode: string; toCode: string; depTime: string; arrTime: string; duration: string; date: string; baggage: string; aircraft: string; lastUpdatedById?: string; }
 interface BookingDoc { id: number; type: string; title: string; image?: string; lastUpdatedById?: string; }
-interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; memberIds: string[]; }
+interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; memberIds: string[]; joinCode: string; }
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
@@ -30,6 +30,26 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Fox&backgroundColor=ffdfbf',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
+
+// 隨機產生 6 碼不重複的大寫英數字代碼
+function generateJoinCode(existingTrips: Trip[]): string {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 排除易混淆字元 0,1,I,O
+  let code = '';
+  let exists = true;
+  while (exists) {
+    code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    exists = existingTrips.some(t => t.joinCode === code);
+  }
+  return code;
+}
+
+// 隨機產生 4 位數驗證碼
+function generateRandomCaptcha(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
 
 function getTodayDateString(): string {
   const today = new Date();
@@ -71,16 +91,48 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
-function ImageUploader({ onUpload, label }: { onUpload: (base64: string) => void, label: string }) {
+// 通用相片壓縮上傳器
+function ImageUploader({ onUpload, label, maxDimension = 600, quality = 0.7 }: { onUpload: (base64: string) => void, label: string, maxDimension?: number, quality?: number }) {
   const fileInput = useRef<HTMLInputElement>(null);
+
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => onUpload(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          onUpload(compressedBase64);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
+
   return (
     <div>
       <button onClick={() => fileInput.current?.click()} className="text-[10px] bg-gray-100 px-3 py-2 rounded-xl font-black text-black shadow-sm active:scale-95 transition-all">📷 {label}</button>
@@ -89,28 +141,210 @@ function ImageUploader({ onUpload, label }: { onUpload: (base64: string) => void
   );
 }
 
-// 1. 登錄頁面
-function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allMembers: Member[] }) {
-  const [input, setInput] = useState('');
+// 1. 登錄與註冊頁面
+function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [loginInput, setLoginInput] = useState('');
+
+  // 註冊表單狀態
+  const [regName, setRegName] = useState('');
+  const [regCode, setRegCode] = useState('');
+  const [regConfirmCode, setRegConfirmCode] = useState('');
+  const [regAvatar, setRegAvatar] = useState(PRESET_ANIMAL_AVATARS[0]);
+  const [captchaCode, setCaptchaCode] = useState(() => generateRandomCaptcha());
+  const [captchaInput, setCaptchaInput] = useState('');
+
+  const refreshCaptcha = () => {
+    setCaptchaCode(generateRandomCaptcha());
+    setCaptchaInput('');
+  };
+
+  const isImage = loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http'));
+
+  const handleRegisterSubmit = () => {
+    const trimmedName = regName.trim();
+    const trimmedCode = regCode.trim();
+
+    if (!trimmedName) return alert("❌ 請填寫用戶名稱！");
+    if (!trimmedCode) return alert("❌ 請填寫登入密碼 / 代碼！");
+    if (trimmedCode !== regConfirmCode.trim()) return alert("❌ 兩次密碼輸入不一致，請再次確認！");
+
+    if (captchaInput.trim() !== captchaCode) {
+      alert("❌ 驗證碼錯誤，請重新輸入！");
+      refreshCaptcha();
+      return;
+    }
+
+    if (allMembers.some(m => m.name === trimmedName)) {
+      return alert("❌ 該用戶名稱已被使用，請更換！");
+    }
+    if (allMembers.some(m => m.loginCode === trimmedCode)) {
+      return alert("❌ 該登入密碼 / 代碼已被使用，請更換！");
+    }
+
+    const newMember: Member = {
+      id: Date.now().toString(),
+      name: trimmedName,
+      loginCode: trimmedCode,
+      avatar: regAvatar,
+      editLogs: [`Registered at ${new Date().toLocaleString()}`]
+    };
+
+    onRegister(newMember);
+    alert(`🎉 註冊成功！歡迎 ${newMember.name}，請點擊登入！`);
+    setMode('login');
+    setLoginInput(trimmedCode);
+  };
+
   return (
-    <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-8 text-center font-sans">
-      <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] mb-8 flex items-center justify-center text-4xl shadow-xl animate-bounce">❄️</div>
-      <h1 className="text-3xl font-black text-black mb-2 italic uppercase tracking-tighter">Dupi Travel</h1>
-      <input type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ENTER CODE..." className="w-full max-w-xs p-5 bg-white rounded-[24px] mb-4 font-black text-black outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors" />
-      <button onClick={() => {
-        const found = allMembers.find(m => m.loginCode === input.trim());
-        if (found) onLogin(found); else alert('❌ 查無登入代碼');
-      }} className="w-full max-w-xs py-5 bg-[#86A760] text-white rounded-[24px] font-black shadow-lg active:scale-95 transition-transform">LOGIN</button>
+    <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-6 text-center font-sans">
+      <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] mb-6 flex items-center justify-center text-4xl shadow-xl animate-bounce overflow-hidden border-2 border-white/50">
+        {isImage ? (
+          <img src={loginIcon} alt="App Icon" className="w-full h-full object-cover" />
+        ) : (
+          <span>{loginIcon || '❄️'}</span>
+        )}
+      </div>
+
+      <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">Dupi Travel</h1>
+      <p className="text-xs text-gray-400 mb-6 font-black tracking-widest uppercase">Multi-user Travel Planner</p>
+
+      {/* 切換登入與註冊按鈕 */}
+      <div className="w-full max-w-xs bg-white rounded-2xl p-1 mb-6 flex shadow-sm border border-gray-100 font-black">
+        <button
+          onClick={() => setMode('login')}
+          className={`flex-1 py-2.5 rounded-xl text-xs transition-all ${mode === 'login' ? 'bg-[#5E9E8E] text-white shadow-md' : 'text-gray-400'}`}
+        >
+          登入 LOGIN
+        </button>
+        <button
+          onClick={() => { setMode('register'); refreshCaptcha(); }}
+          className={`flex-1 py-2.5 rounded-xl text-xs transition-all ${mode === 'register' ? 'bg-[#86A760] text-white shadow-md' : 'text-gray-400'}`}
+        >
+          註冊 REGISTER
+        </button>
+      </div>
+
+      {mode === 'login' ? (
+        <div className="w-full max-w-xs space-y-4">
+          <input
+            type="password"
+            value={loginInput}
+            onChange={(e) => setLoginInput(e.target.value)}
+            placeholder="請輸入登入密碼 / 代碼..."
+            className="w-full p-5 bg-white rounded-[24px] font-black text-black outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
+          />
+          <button
+            onClick={() => {
+              const found = allMembers.find(m => m.loginCode === loginInput.trim());
+              if (found) onLogin(found); else alert('❌ 查無登入代碼或密碼錯誤');
+            }}
+            className="w-full py-5 bg-[#86A760] text-white rounded-[24px] font-black shadow-lg active:scale-95 transition-transform"
+          >
+            LOGIN
+          </button>
+        </div>
+      ) : (
+        <div className="w-full max-w-xs bg-white p-6 rounded-[32px] shadow-xl text-left border border-gray-100 space-y-4 font-black">
+          {/* 頭像選擇 */}
+          <div>
+            <label className="text-[10px] text-gray-400 ml-1">選擇頭像</label>
+            <div className="flex items-center gap-2 mt-2">
+              <img src={regAvatar} className="w-12 h-12 rounded-full border-2 border-[#5E9E8E] object-cover shadow-sm shrink-0" />
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
+                {PRESET_ANIMAL_AVATARS.map((av, idx) => (
+                  <img
+                    key={idx}
+                    src={av}
+                    onClick={() => setRegAvatar(av)}
+                    className={`w-7 h-7 rounded-full cursor-pointer hover:scale-110 transition-transform border ${regAvatar === av ? 'border-2 border-[#5E9E8E] scale-105' : 'border-gray-200'}`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="mt-2">
+              <ImageUploader label="上傳自訂頭像照片" maxDimension={250} quality={0.7} onUpload={(b64) => setRegAvatar(b64)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-gray-400 ml-1">用戶名稱 (Name)</label>
+            <input
+              placeholder="你的稱呼 (如: 小明)"
+              value={regName}
+              onChange={(e) => setRegName(e.target.value)}
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] text-gray-400 ml-1">登入密碼 / 代碼 (Login Code)</label>
+            <input
+              type="password"
+              placeholder="設定你的專屬登入密碼"
+              value={regCode}
+              onChange={(e) => setRegCode(e.target.value)}
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] text-gray-400 ml-1">確認密碼 (Confirm Code)</label>
+            <input
+              type="password"
+              placeholder="再次輸入登入密碼"
+              value={regConfirmCode}
+              onChange={(e) => setRegConfirmCode(e.target.value)}
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+            />
+          </div>
+
+          {/* 4 位數圖形數字驗證碼 */}
+          <div>
+            <label className="text-[10px] text-gray-400 ml-1">4 位數數字驗證碼</label>
+            <div className="flex gap-2 items-center mt-1">
+              <input
+                placeholder="輸入右方 4 碼"
+                value={captchaInput}
+                onChange={(e) => setCaptchaInput(e.target.value)}
+                maxLength={4}
+                className="flex-1 p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100 text-center tracking-widest font-mono"
+              />
+              <div
+                onClick={refreshCaptcha}
+                title="點擊更換驗證碼"
+                className="w-24 h-11 bg-gradient-to-r from-amber-200 to-emerald-200 rounded-xl flex items-center justify-center font-mono font-black text-lg tracking-widest text-emerald-950 shadow-inner cursor-pointer select-none border border-emerald-300 active:scale-95 transition-transform"
+              >
+                {captchaCode}
+              </div>
+            </div>
+            <p className="text-[9px] text-gray-400 mt-1 ml-1 cursor-pointer" onClick={refreshCaptcha}>↻ 點擊圖形可更換驗證碼</p>
+          </div>
+
+          <button
+            onClick={handleRegisterSubmit}
+            className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg text-sm active:scale-95 transition-transform mt-2"
+          >
+            確認註冊 REGISTER
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// 2. 主畫面 (支援所有用戶在首頁自改 Code、頭像與名字)
-function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void }) {
+// 2. 主畫面 (支援旅行代碼、加入旅行、Wayne 全局查看開關)
+function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
+  const [showJoinTripModal, setShowJoinTripModal] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
   const [showUserAdmin, setShowUserAdmin] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [showLoginIconModal, setShowLoginIconModal] = useState(false);
+
+  // Wayne 管理員專屬：是否切換為「查看全站所有行程」視角
+  const [wayneViewAll, setWayneViewAll] = useState(false);
 
   const todayStr = useMemo(() => getTodayDateString(), []);
   const [newTrip, setNewTrip] = useState<Trip>({ 
@@ -119,16 +353,23 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
     startDate: todayStr, 
     endDate: todayStr, 
     emoji: '☃️', 
-    memberIds: [user.id] 
+    memberIds: [user.id],
+    joinCode: ''
   });
 
+  // 行程篩選邏輯：
+  // 如果是 Wayne 且開啟了「全域視角」，顯示全站所有行程；
+  // 否則，無論是 Wayne 還是一般用戶，都只顯示「自己有加入」的行程！
   const visibleTrips = useMemo(() => {
-    if (user.loginCode === 'wayne') return allTrips;
+    if (user.loginCode === 'wayne' && wayneViewAll) {
+      return allTrips;
+    }
     return allTrips.filter(t => t.memberIds.includes(user.id));
-  }, [allTrips, user]);
+  }, [allTrips, user, wayneViewAll]);
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32">
+      {/* 頂部成員與選單 */}
       <div className="flex justify-between items-center mb-6 relative">
         <div className="font-black">
           <p className="text-xs text-gray-400 uppercase tracking-widest">{user.loginCode === 'wayne' ? 'Admin Mode,' : 'User Mode,'}</p>
@@ -141,21 +382,25 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
           </div>
 
           {showUserDropdown && (
-            <div className="absolute right-0 mt-3 w-52 bg-white rounded-2xl shadow-2xl p-2 z-50 border border-gray-100 font-black animate-in fade-in">
+            <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl p-2 z-50 border border-gray-100 font-black animate-in fade-in">
               <div className="p-3 border-b border-gray-50 mb-1">
                 <p className="text-xs text-black font-black truncate">{user.name}</p>
                 <p className="text-[10px] text-gray-400 font-mono">Code: {user.loginCode}</p>
               </div>
 
-              {/* 💥 所有用戶皆可在此修改自己的個人資料與 Code */}
               <button onClick={() => { setShowUserDropdown(false); setEditingMember(user); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-blue-600">
                 👤 修改個人設定 (Code/姓名)
               </button>
 
               {user.loginCode === 'wayne' && (
-                <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2">
-                  ⚙️ 成員管理名冊
-                </button>
+                <>
+                  <button onClick={() => { setShowUserDropdown(false); setShowLoginIconModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-purple-600">
+                    🖼️ 更換登入頁圖示
+                  </button>
+                  <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2">
+                    ⚙️ 成員管理名冊
+                  </button>
+                </>
               )}
               <button onClick={() => { setShowUserDropdown(false); onLogout(); }} className="w-full text-left p-2.5 rounded-xl text-xs text-red-500 hover:bg-red-50 flex items-center gap-2">
                 🚪 登出帳號
@@ -165,7 +410,8 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       </div>
 
-      <div className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-4 mb-8 flex justify-between items-center font-black">
+      {/* 公告 */}
+      <div className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-4 mb-6 flex justify-between items-center font-black">
         <div className="flex items-center gap-3 overflow-hidden">
           <span className="text-lg">📢</span>
           <p className="text-xs text-amber-900 truncate">{notice || '歡迎使用 Dupi Travel！祝旅途愉快～'}</p>
@@ -180,52 +426,150 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         )}
       </div>
 
+      {/* Wayne 專屬：查看全站行程開關 */}
+      {user.loginCode === 'wayne' && (
+        <div className="mb-6 bg-white p-3.5 rounded-2xl border border-purple-100 flex justify-between items-center shadow-sm font-black">
+          <div className="flex items-center gap-2">
+            <span className="text-base">👑</span>
+            <div>
+              <p className="text-xs text-purple-950 font-black">{wayneViewAll ? '當前視角：全站所有行程 (管理者視角)' : '當前視角：僅我的行程 (個人視角)'}</p>
+              <p className="text-[9px] text-gray-400">{wayneViewAll ? '顯示系統內所有人的行程' : '主頁乾淨整齊，只保留 Wayne 有參與的行程'}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setWayneViewAll(!wayneViewAll)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${wayneViewAll ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
+          >
+            {wayneViewAll ? '切回個人行程' : '👀 查看全站行程'}
+          </button>
+        </div>
+      )}
+
+      {/* 行程列表標頭與功能按鈕 */}
       <div className="flex justify-between items-center mb-6 font-black">
-        <h3 className="text-sm text-[#5E9E8E] uppercase italic">My Trips</h3>
-        {user.loginCode === 'wayne' && (
-          <button onClick={() => {
-            const today = getTodayDateString();
-            setNewTrip({ id: '', title: '', startDate: today, endDate: today, emoji: '☃️', memberIds: [user.id] });
-            setShowAddTrip(true);
-          }} className="text-[10px] bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg">+ NEW TRIP</button>
-        )}
+        <h3 className="text-sm text-[#5E9E8E] uppercase italic">
+          {wayneViewAll ? 'All Trips (Global View)' : 'My Trips'}
+        </h3>
+        <div className="flex gap-2">
+          {/* 加入旅行按鈕（所有用戶皆可使用） */}
+          <button
+            onClick={() => { setJoinCodeInput(''); setShowJoinTripModal(true); }}
+            className="text-[10px] bg-emerald-600 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform"
+          >
+            ➕ 加入旅行 (代碼)
+          </button>
+          
+          {/* 新增行程按鈕（所有用戶皆可自行開團） */}
+          <button
+            onClick={() => {
+              const today = getTodayDateString();
+              const freshJoinCode = generateJoinCode(allTrips);
+              setNewTrip({ id: '', title: '', startDate: today, endDate: today, emoji: '☃️', memberIds: [user.id], joinCode: freshJoinCode });
+              setShowAddTrip(true);
+            }}
+            className="text-[10px] bg-blue-500 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform"
+          >
+            + NEW TRIP
+          </button>
+        </div>
       </div>
 
+      {/* 行程清單 */}
       <div className="space-y-6">
         {visibleTrips.length === 0 && (
           <div className="bg-white p-8 rounded-3xl text-center text-gray-300 font-black">
-            目前尚無你有權限查看的旅行計劃
+            目前尚無你有權限查看的旅行計劃。<br />
+            點擊上方「+ NEW TRIP」建立行程，或「➕ 加入旅行」輸入好友的 6 碼代碼！
           </div>
         )}
         {visibleTrips.map(trip => (
           <div key={trip.id} className="relative font-black">
             <button onClick={() => onSelect(trip)} className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-95 transition-all">
-              <div className="w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl">{trip.emoji}</div>
-              <div className="flex-1"><h4 className="text-lg text-black">{trip.title}</h4><p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter">{trip.startDate} ~ {trip.endDate}</p></div>
+              <div className="w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0">{trip.emoji}</div>
+              <div className="flex-1 overflow-hidden">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-lg text-black truncate">{trip.title}</h4>
+                  <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black">
+                    代碼: {trip.joinCode}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter">{trip.startDate} ~ {trip.endDate}</p>
+                <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono">成員：{trip.memberIds.length} 人</p>
+              </div>
             </button>
-            {user.loginCode === 'wayne' && <button onClick={() => { if(confirm('確定刪除此行程？')) onDeleteTrip(trip.id); }} className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full text-xs shadow-lg font-black">✕</button>}
+            {/* 只有行程發起人或 Wayne 可以刪除該行程 */}
+            {(user.loginCode === 'wayne' || trip.memberIds[0] === user.id) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if(confirm(`確定刪除旅行「${trip.title}」？此操作無法復原。`)) onDeleteTrip(trip.id);
+                }}
+                className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full text-xs shadow-lg font-black flex items-center justify-center hover:bg-red-600"
+              >
+                ✕
+              </button>
+            )}
           </div>
         ))}
       </div>
 
+      {/* 💥 輸入旅行代碼加入彈窗 */}
+      {showJoinTripModal && (
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
+            <h3 className="text-center italic mb-2 uppercase text-xl">加入旅行計劃</h3>
+            <p className="text-xs text-gray-400 text-center mb-6">請向旅伴索取 6 位數旅行代碼（例如 TK82M9）</p>
+
+            <input
+              placeholder="輸入 6 位英文或數字代碼..."
+              value={joinCodeInput}
+              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+              maxLength={6}
+              className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200 text-[#5E9E8E]"
+            />
+
+            <div className="flex gap-4">
+              <button onClick={() => setShowJoinTripModal(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const trimmed = joinCodeInput.trim().toUpperCase();
+                  if (!trimmed) return alert("請輸入 6 位代碼！");
+                  onJoinTrip(trimmed);
+                  setShowJoinTripModal(false);
+                }}
+                className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black"
+              >
+                確認加入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 建立新行程彈窗（自動配發 6 碼代碼，不再需要選成員） */}
       {showAddTrip && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
-             <h3 className="text-xl mb-6 italic uppercase tracking-tighter">Setup New Trip</h3>
-             <input placeholder="Trip Title (e.g. 2026 Tokyo)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100" />
-             <div className="grid grid-cols-2 gap-4 mb-4">
-               <input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none" />
-               <input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none" />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
+             <h3 className="text-xl mb-4 italic uppercase tracking-tighter">Setup New Trip</h3>
+             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 text-center">
+               <p className="text-[10px] text-emerald-700">自動生成專屬旅行代碼（旅伴輸入即可加入）</p>
+               <p className="text-2xl font-mono text-emerald-900 font-black tracking-widest mt-0.5">{newTrip.joinCode}</p>
              </div>
-             <p className="text-[10px] opacity-30 mb-2">PARTICIPANTS</p>
-             <div className="flex flex-wrap gap-2 mb-8">
-                {allMembers.map(m => (
-                  <button key={m.id} onClick={()=>{
-                    const ids = newTrip.memberIds.includes(m.id) ? newTrip.memberIds.filter(id=>id!==m.id) : [...newTrip.memberIds, m.id];
-                    setNewTrip({...newTrip, memberIds: ids});
-                  }} className={`px-4 py-2 rounded-full text-[10px] transition-all ${newTrip.memberIds.includes(m.id) ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}>{m.name}</button>
-                ))}
+
+             <input placeholder="Trip Title (e.g. 2026 東京行)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
+             <div className="grid grid-cols-2 gap-4 mb-6">
+               <div>
+                 <label className="text-[10px] text-gray-400 ml-1">開始日期</label>
+                 <input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black" />
+               </div>
+               <div>
+                 <label className="text-[10px] text-gray-400 ml-1">結束日期</label>
+                 <input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black" />
+               </div>
              </div>
+
              <div className="flex gap-4">
                 <button onClick={()=>setShowAddTrip(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
                 <button onClick={()=>{
@@ -233,13 +577,52 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   onAddTrip({...newTrip, id: Date.now().toString()});
                   setShowAddTrip(false);
                   const today = getTodayDateString();
-                  setNewTrip({id:'', title:'', startDate: today, endDate: today, emoji:'☃️', memberIds:[user.id]});
-                }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic">Create Trip</button>
+                  setNewTrip({id:'', title:'', startDate: today, endDate: today, emoji:'☃️', memberIds:[user.id], joinCode: generateJoinCode(allTrips)});
+                }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Create Trip</button>
              </div>
           </div>
         </div>
       )}
 
+      {/* Wayne 更換登入頁面圖示彈窗 */}
+      {showLoginIconModal && (
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
+            <h3 className="text-center italic mb-4 uppercase text-lg">更換登入頁面圖示</h3>
+            <p className="text-xs text-gray-400 text-center mb-6">可上傳專屬 Logo 照片，或點選喜歡的 Emoji</p>
+            
+            <div className="flex flex-col items-center gap-4 mb-6">
+              <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-white">
+                {loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http')) ? (
+                  <img src={loginIcon} className="w-full h-full object-cover" alt="icon preview" />
+                ) : (
+                  <span>{loginIcon || '❄️'}</span>
+                )}
+              </div>
+              <ImageUploader label="上傳自訂圖案/照片" maxDimension={300} quality={0.8} onUpload={(b64) => onUpdateLoginIcon(b64)} />
+            </div>
+
+            <div className="flex gap-2 mb-6">
+              {['❄️', '☃️', '🌸', '✈️', '🐶', '🍙'].map((emoji) => (
+                <button key={emoji} onClick={() => onUpdateLoginIcon(emoji)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xl">
+                  {emoji}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => { onUpdateLoginIcon('❄️'); alert("已還原為預設雪花！"); }} className="py-4 px-4 bg-gray-100 rounded-3xl text-xs font-black">
+                還原雪花
+              </button>
+              <button onClick={() => setShowLoginIconModal(false)} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl font-black">
+                完成設定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 使用者管理名冊 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -276,6 +659,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
+      {/* 個人設定彈窗 */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -287,7 +671,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   <img key={idx} src={av} onClick={() => setEditingMember({...editingMember, avatar: av})} className="w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition-transform border border-gray-200" />
                 ))}
               </div>
-              <ImageUploader label="上傳相片" onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
+              <ImageUploader label="上傳相片 (已啟用極致壓縮)" maxDimension={250} quality={0.7} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
             <label className="text-[10px] text-gray-400 ml-2">姓名</label>
             <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
@@ -330,7 +714,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   );
 }
 
-// 3. 主程式元件
+// 3. 主程式元件 (顯示專屬旅行邀請代碼)
 function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
@@ -396,7 +780,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     advice: '請先在下方新增城市並勾選日期以獲取即時天氣'
   });
 
-  const [showAddExistingModal, setShowAddExistingModal] = useState(false);
   const [editingMemberModal, setEditingMemberModal] = useState<Member | null>(null);
 
   const [exchangeRates, setExchangeRates] = useState({ JPY: 0.22, TWD: 1.0, CNY: 4.5 });
@@ -635,7 +1018,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
       <div className="p-4 flex justify-between items-center sticky top-0 bg-[#F9F8F3]/90 backdrop-blur-md z-40">
         <div onClick={onBack} className="flex items-center gap-3 cursor-pointer">
           <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">←</div>
-          <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter">DUPI TRAVEL</h1>
+          <div>
+            <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter leading-tight">DUPI TRAVEL</h1>
+            <p className="text-[9px] text-gray-400 font-mono tracking-wider">CODE: {tripData.joinCode}</p>
+          </div>
         </div>
         <div className="flex -space-x-2">
           {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
@@ -873,7 +1259,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                   </div>
                 ))}
                 <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center">
-                  <ImageUploader label="UPLOAD VOUCHER" onUpload={(b64)=>{const title=prompt("請輸入憑證名稱:"); if(title){const n=[{id:Date.now(), type:'憑證', title, image:b64, lastUpdatedById: user.id}, ...bookings]; setBookings(n); sync({bookings:n});}}} />
+                  <ImageUploader label="UPLOAD VOUCHER (壓縮保存)" maxDimension={800} quality={0.7} onUpload={(b64)=>{const title=prompt("請輸入憑證名稱:"); if(title){const n=[{id:Date.now(), type:'憑證', title, image:b64, lastUpdatedById: user.id}, ...bookings]; setBookings(n); sync({bookings:n});}}} />
                 </div>
               </div>
             )}
@@ -1096,7 +1482,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
                 <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black border-none shadow-inner" />
                 <div className="flex justify-between items-center">
-                    <ImageUploader label="上傳照片" onUpload={img => setNewJournal({...newJournal, image: img})} />
+                    <ImageUploader label="上傳照片 (壓縮保存)" maxDimension={800} quality={0.7} onUpload={img => setNewJournal({...newJournal, image: img})} />
                     <button onClick={()=>{
                         if(!newJournal.content.trim()) return alert("請輸入日誌內容！");
                         const n: JournalEntry[] = [{id:Date.now(), authorId:user.id, content:newJournal.content.trim(), image:newJournal.image, date:new Date().toLocaleString(), lastUpdatedById: user.id}, ...journals];
@@ -1199,28 +1585,42 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 成員] --- */}
+        {/* --- [Tab: 成員] (展示專屬旅行代碼，方便好友加入) --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black tracking-widest">Trip Members</h3>
-              {user.loginCode === 'wayne' && (
-                <button 
-                  onClick={() => setShowAddExistingModal(true)}
-                  className="text-[10px] bg-[#86A760] text-white px-3 py-1.5 rounded-full shadow-md active:scale-95 transition-transform"
-                >
-                  + 加入現有成員
-                </button>
-              )}
+            {/* 邀請代碼卡片 */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl p-5 text-white shadow-lg flex justify-between items-center">
+              <div>
+                <p className="text-[10px] uppercase opacity-80 tracking-wider">旅行邀請代碼 (SHARE TO FRIENDS)</p>
+                <h3 className="text-2xl font-mono tracking-widest mt-0.5">{tripData.joinCode}</h3>
+                <p className="text-[9px] opacity-75 mt-1">朋友在首頁輸入此 6 碼代碼即可一鍵加入本行程</p>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(tripData.joinCode);
+                  alert(`✅ 旅行代碼【${tripData.joinCode}】已複製到剪貼簿！快傳給朋友吧！`);
+                }}
+                className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs active:scale-95 transition-all shadow-sm"
+              >
+                📋 複製代碼
+              </button>
+            </div>
+
+            <div className="flex justify-between items-center mt-6 mb-2">
+              <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black tracking-widest">Trip Members ({currentMemberIds.length})</h3>
             </div>
 
             {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
               const canEditThisMember = user.loginCode === 'wayne' || user.id === m.id;
+              const isTripLeader = tripData.memberIds[0] === m.id;
               return (
                 <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-50 font-black relative">
-                  <img src={m.avatar} className="w-16 h-16 rounded-[24px] object-cover border-2 border-white shadow-md font-black" />
+                  <img src={m.avatar} className="w-16 h-16 rounded-[24px] object-cover border-2 border-white shadow-md font-black shrink-0" />
                   <div className="flex-1">
-                      <h4 className="text-lg text-black font-black">{m.name}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-lg text-black font-black">{m.name}</h4>
+                        {isTripLeader && <span className="text-[9px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">開團者</span>}
+                      </div>
                       {user.loginCode === 'wayne' && (
                         <div className="mt-3 space-y-1.5">
                             <p className="text-[9px] text-gray-400 uppercase tracking-widest font-black">History Logs:</p>
@@ -1240,7 +1640,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         🖋️ 編輯
                       </button>
                     )}
-                    {user.loginCode === 'wayne' && m.loginCode !== 'wayne' && (
+                    {/* 發起人或管理員 Wayne 可將旅伴請離行程 */}
+                    {(user.loginCode === 'wayne' || tripData.memberIds[0] === user.id) && m.id !== tripData.memberIds[0] && (
                       <button 
                         onClick={() => {
                           if (confirm(`確定將 ${m.name} 從此行程移除？其建立的記錄仍會完整保留。`)) {
@@ -1250,7 +1651,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         }}
                         className="bg-red-50 hover:bg-red-100 text-xs px-3 py-2 rounded-2xl text-red-500 font-black"
                       >
-                        ✕ 移除旅伴
+                        ✕ 移出
                       </button>
                     )}
                   </div>
@@ -1260,45 +1661,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
       </div>
-
-      {/* 加入現有成員彈窗 */}
-      {showAddExistingModal && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
-            <h3 className="text-center italic mb-4 uppercase text-lg">選擇要加入行程的既有成員</h3>
-            <p className="text-[10px] text-gray-400 text-center mb-6">新增全新用戶請回到最開始的主畫面 ADMIN MODE</p>
-            <div className="space-y-3 max-h-60 overflow-y-auto mb-6">
-              {allMembers.map(m => {
-                const isSelected = currentMemberIds.includes(m.id);
-                return (
-                  <div 
-                    key={m.id} 
-                    onClick={() => {
-                      if (isSelected) {
-                        if (confirm(`確定要將「${m.name}」從本行程移除嗎？`)) {
-                          const nextIds = currentMemberIds.filter(id => id !== m.id);
-                          handleUpdateTripMembers(nextIds);
-                        }
-                      } else {
-                        if (confirm(`確定要將「${m.name}」加入本行程嗎？`)) {
-                          const nextIds = [...currentMemberIds, m.id];
-                          handleUpdateTripMembers(nextIds);
-                        }
-                      }
-                    }} 
-                    className={`p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-all ${isSelected ? 'bg-green-50 border border-[#86A760]' : 'bg-gray-50'}`}
-                  >
-                    <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                    <span className="flex-1 text-sm font-black">{m.name}</span>
-                    <span className="text-xs font-black">{isSelected ? '✓ 已在行程中 (點擊移除)' : '+ 點擊加入'}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <button onClick={() => setShowAddExistingModal(false)} className="w-full py-4 bg-[#86A760] text-white rounded-3xl font-black">完成</button>
-          </div>
-        </div>
-      )}
 
       {/* 成員編輯 Modal */}
       {editingMemberModal && (
@@ -1319,7 +1681,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 ))}
               </div>
 
-              <ImageUploader label="上傳自訂頭像" onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
+              <ImageUploader label="上傳自訂頭像 (自動壓縮)" maxDimension={250} quality={0.7} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
             </div>
 
             <label className="text-[10px] text-gray-400 ml-2">姓名</label>
@@ -1426,7 +1788,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 <input placeholder="To (如: NRT)" value={flightForm.toCode} onChange={e=>setFlightForm({...flightForm, toCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black" />
               </div>
               
-              <div grid-cols-2 gap-4>
+              <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] ml-2 opacity-40">起飛時間 (Dep Time)</label><input type="time" value={flightForm.depTime} onChange={e=>setFlightForm({...flightForm, depTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
                 <div><label className="text-[10px] ml-2 opacity-40">抵達時間 (Arr Time)</label><input type="time" value={flightForm.arrTime} onChange={e=>setFlightForm({...flightForm, arrTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
               </div>
@@ -1466,22 +1828,23 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   );
 }
 
-// 4. 入口點
+// 4. 入口點 (同步登入圖示、多使用者註冊與旅行邀請代碼)
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [selectedTrips, setSelectedTrips] = useState<Trip[]>([]);
   const [notice, setNotice] = useState<string>('');
+  const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
     // 1. 同步成員
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v10', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v13', JSON.stringify(mData.content));
     } else {
-      const cachedM = localStorage.getItem('app_members_v10');
+      const cachedM = localStorage.getItem('app_members_v13');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -1490,25 +1853,29 @@ export default function AppEntry() {
           { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v10', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v13', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
 
-    // 2. 同步行程
+    // 2. 同步行程 (確保每個行程都有 joinCode)
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
-      setSelectedTrips(tData.content);
-      localStorage.setItem('app_trips_v10', JSON.stringify(tData.content));
+      const ensuredTrips = (tData.content as Trip[]).map(t => ({
+        ...t,
+        joinCode: t.joinCode || generateJoinCode([])
+      }));
+      setSelectedTrips(ensuredTrips);
+      localStorage.setItem('app_trips_v13', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v10');
+      const cachedT = localStorage.getItem('app_trips_v13');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
-        const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
+        const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v10', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v13', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -1517,39 +1884,52 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v10', nData.content);
+      localStorage.setItem('app_notice_v13', nData.content);
+    }
+
+    // 4. 同步登入頁圖示
+    const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
+    if (iData?.content && typeof iData.content === 'string') {
+      setLoginIcon(iData.content);
+      localStorage.setItem('app_login_icon_v13', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v10');
-    const localT = localStorage.getItem('app_trips_v10');
-    const localN = localStorage.getItem('app_notice_v10');
+    const localM = localStorage.getItem('app_members_v13');
+    const localT = localStorage.getItem('app_trips_v13');
+    const localN = localStorage.getItem('app_notice_v13');
+    const localI = localStorage.getItem('app_login_icon_v13');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
+    if (localI) setLoginIcon(localI);
 
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v10')
+      .channel('app-global-sync-v13')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__)' },
+        { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
         (payload) => {
           if (payload.new) {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v10', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v13', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v10', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v13', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v10', p.content);
+              localStorage.setItem('app_notice_v13', p.content);
+            }
+            if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
+              setLoginIcon(p.content);
+              localStorage.setItem('app_login_icon_v13', p.content);
             }
           }
         }
@@ -1563,21 +1943,26 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v10', JSON.stringify(newM));
+    localStorage.setItem('app_members_v13', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
+  };
+
+  const handleRegister = async (newM: Member) => {
+    const updated = [...allMembers, newM];
+    handleUpdateMembers(updated);
   };
 
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v10', JSON.stringify(next));
+    localStorage.setItem('app_trips_v13', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v10', JSON.stringify(next));
+    localStorage.setItem('app_trips_v13', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -1585,14 +1970,45 @@ export default function AppEntry() {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
     setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v10', JSON.stringify(next));
+    localStorage.setItem('app_trips_v13', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
+  };
+
+  // 💥 透過 6 碼旅行代碼加入行程
+  const handleJoinTrip = async (code: string) => {
+    if (!user) return;
+    const target = selectedTrips.find(t => t.joinCode?.toUpperCase() === code);
+    if (!target) {
+      return alert("❌ 查無此旅行代碼，請確認代碼是否正確！");
+    }
+
+    if (target.memberIds.includes(user.id)) {
+      return alert("💡 你已經是這趟旅行的成員囉！");
+    }
+
+    const updatedTrip: Trip = {
+      ...target,
+      memberIds: [...target.memberIds, user.id]
+    };
+
+    const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
+    setSelectedTrips(nextTrips);
+    localStorage.setItem('app_trips_v13', JSON.stringify(nextTrips));
+    await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
+
+    alert(`🎉 成功加入旅行：【${target.title}】！`);
   };
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v10', n);
+    localStorage.setItem('app_notice_v13', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
+  };
+
+  const handleUpdateLoginIcon = async (icon: string) => {
+    setLoginIcon(icon);
+    localStorage.setItem('app_login_icon_v13', icon);
+    await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
   const handleLogout = () => {
@@ -1601,10 +2017,17 @@ export default function AppEntry() {
     fetchCloudData();
   };
 
-  if (!user) return <LoginPage onLogin={(loggedUser) => {
-    setUser(loggedUser);
-    fetchCloudData();
-  }} allMembers={allMembers} />;
+  if (!user) return (
+    <AuthPage
+      onLogin={(loggedUser) => {
+        setUser(loggedUser);
+        fetchCloudData();
+      }}
+      allMembers={allMembers}
+      onRegister={handleRegister}
+      loginIcon={loginIcon}
+    />
+  );
   
   if (!selectedTrip) return (
     <TripSelector 
@@ -1619,6 +2042,9 @@ export default function AppEntry() {
       onUpdateUser={setUser}
       notice={notice}
       onUpdateNotice={handleUpdateNotice}
+      loginIcon={loginIcon}
+      onUpdateLoginIcon={handleUpdateLoginIcon}
+      onJoinTrip={handleJoinTrip}
     />
   );
 
