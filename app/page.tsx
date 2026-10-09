@@ -31,9 +31,8 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
 
-// 隨機產生 6 碼不重複的大寫英數字代碼
 function generateJoinCode(existingTrips: Trip[]): string {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 排除易混淆字元 0,1,I,O
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let code = '';
   let exists = true;
   while (exists) {
@@ -46,7 +45,6 @@ function generateJoinCode(existingTrips: Trip[]): string {
   return code;
 }
 
-// 隨機產生 4 位數驗證碼
 function generateRandomCaptcha(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
@@ -91,9 +89,27 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
-// 通用相片壓縮上傳器
-function ImageUploader({ onUpload, label, maxDimension = 600, quality = 0.7 }: { onUpload: (base64: string) => void, label: string, maxDimension?: number, quality?: number }) {
+// 💥 互動式圖片調整與裁切元件 (支援手勢拖曳位置、縮放大小，並輸出高品質壓縮圖)
+function ImageUploader({ 
+  onUpload, 
+  label, 
+  maxDimension = 400, 
+  quality = 0.75, 
+  aspectRatio = 1 
+}: { 
+  onUpload: (base64: string) => void, 
+  label: string, 
+  maxDimension?: number, 
+  quality?: number, 
+  aspectRatio?: number 
+}) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const [croppingImage, setCroppingImage] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -101,42 +117,158 @@ function ImageUploader({ onUpload, label, maxDimension = 600, quality = 0.7 }: {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxDimension) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          }
-        } else {
-          if (height > maxDimension) {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-          onUpload(compressedBase64);
-        }
-      };
-      img.src = event.target?.result as string;
+      setCroppingImage(event.target?.result as string);
+      setZoom(1);
+      setOffset({ x: 0, y: 0 });
     };
     reader.readAsDataURL(file);
+    e.target.value = ''; // 清除以允許重複上傳相同檔案
+  };
+
+  const handlePointerDown = (clientX: number, clientY: number) => {
+    setIsDragging(true);
+    setDragStart({ x: clientX - offset.x, y: clientY - offset.y });
+  };
+
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    if (!isDragging) return;
+    setOffset({
+      x: clientX - dragStart.x,
+      y: clientY - dragStart.y
+    });
+  };
+
+  const handlePointerUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleConfirmCrop = () => {
+    if (!imgRef.current) return;
+    const img = imgRef.current;
+    const canvas = document.createElement('canvas');
+    const targetSize = maxDimension;
+    canvas.width = targetSize;
+    canvas.height = targetSize / aspectRatio;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 依據目前容器座標反推圖片裁切區間
+    const boxSize = 260; // 裁切容器基準寬高
+    const displayedWidth = img.clientWidth * zoom;
+    const displayedHeight = img.clientHeight * zoom;
+
+    const scaleX = img.naturalWidth / displayedWidth;
+    const scaleY = img.naturalHeight / displayedHeight;
+
+    const cropBoxX = (displayedWidth - boxSize) / 2 - offset.x;
+    const cropBoxY = (displayedHeight - boxSize) / 2 - offset.y;
+
+    const sourceX = cropBoxX * scaleX;
+    const sourceY = cropBoxY * scaleY;
+    const sourceW = boxSize * scaleX;
+    const sourceH = boxSize * scaleY;
+
+    ctx.drawImage(
+      img,
+      Math.max(0, sourceX),
+      Math.max(0, sourceY),
+      sourceW,
+      sourceH,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    const base64 = canvas.toDataURL('image/jpeg', quality);
+    onUpload(base64);
+    setCroppingImage(null);
   };
 
   return (
     <div>
-      <button onClick={() => fileInput.current?.click()} className="text-[10px] bg-gray-100 px-3 py-2 rounded-xl font-black text-black shadow-sm active:scale-95 transition-all">📷 {label}</button>
+      <button 
+        type="button" 
+        onClick={() => fileInput.current?.click()} 
+        className="text-[10px] bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-xl font-black text-black shadow-sm active:scale-95 transition-all"
+      >
+        📷 {label}
+      </button>
       <input type="file" ref={fileInput} onChange={handleFile} accept="image/*" className="hidden" />
+
+      {/* 互動式相片調整 Modal */}
+      {croppingImage && (
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[36px] p-6 max-w-sm w-full text-black font-black flex flex-col items-center animate-in zoom-in-95">
+            <h4 className="text-base font-black mb-1">調整照片大小與位置</h4>
+            <p className="text-[10px] text-gray-400 mb-4">用手指或滑鼠拖曳移動，使用滑桿放大縮小</p>
+
+            {/* 裁切視窗容器 */}
+            <div 
+              className="w-[260px] h-[260px] rounded-3xl overflow-hidden relative bg-gray-900 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
+              onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
+              onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
+              onMouseUp={handlePointerUp}
+              onTouchStart={(e) => handlePointerDown(e.touches[0].clientX, e.touches[0].clientY)}
+              onTouchMove={(e) => handlePointerMove(e.touches[0].clientX, e.touches[0].clientY)}
+              onTouchEnd={handlePointerUp}
+            >
+              <img
+                ref={imgRef}
+                src={croppingImage}
+                alt="Crop preview"
+                draggable={false}
+                style={{
+                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  pointerEvents: 'none'
+                }}
+              />
+              <div className="absolute inset-0 pointer-events-none border border-white/40 rounded-2xl flex items-center justify-center">
+                <span className="text-[10px] text-white/50 bg-black/40 px-2 py-0.5 rounded-full">預覽範圍</span>
+              </div>
+            </div>
+
+            {/* 縮放滑桿 */}
+            <div className="w-full mt-5 px-2">
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>小 (1.0x)</span>
+                <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
+                <span>大 (3.0x)</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.05"
+                value={zoom}
+                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                className="w-full accent-[#5E9E8E] cursor-pointer"
+              />
+            </div>
+
+            <div className="flex gap-3 w-full mt-6">
+              <button
+                type="button"
+                onClick={() => setCroppingImage(null)}
+                className="flex-1 py-3 bg-gray-100 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCrop}
+                className="flex-1 py-3 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md italic"
+              >
+                ✓ 確認套用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -144,9 +276,10 @@ function ImageUploader({ onUpload, label, maxDimension = 600, quality = 0.7 }: {
 // 1. 登錄與註冊頁面
 function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loginInput, setLoginInput] = useState('');
+  
+  const [loginAccountInput, setLoginAccountInput] = useState('');
+  const [loginPasswordInput, setLoginPasswordInput] = useState('');
 
-  // 註冊表單狀態
   const [regName, setRegName] = useState('');
   const [regCode, setRegCode] = useState('');
   const [regConfirmCode, setRegConfirmCode] = useState('');
@@ -166,7 +299,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     const trimmedCode = regCode.trim();
 
     if (!trimmedName) return alert("❌ 請填寫用戶名稱！");
-    if (!trimmedCode) return alert("❌ 請填寫登入密碼 / 代碼！");
+    if (!trimmedCode) return alert("❌ 請填寫登入密碼！");
     if (trimmedCode !== regConfirmCode.trim()) return alert("❌ 兩次密碼輸入不一致，請再次確認！");
 
     if (captchaInput.trim() !== captchaCode) {
@@ -175,11 +308,8 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       return;
     }
 
-    if (allMembers.some(m => m.name === trimmedName)) {
-      return alert("❌ 該用戶名稱已被使用，請更換！");
-    }
-    if (allMembers.some(m => m.loginCode === trimmedCode)) {
-      return alert("❌ 該登入密碼 / 代碼已被使用，請更換！");
+    if (allMembers.some(m => m.name.toLowerCase() === trimmedName.toLowerCase())) {
+      return alert("❌ 該用戶名稱已被使用，請更換其他名稱！");
     }
 
     const newMember: Member = {
@@ -191,13 +321,34 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     };
 
     onRegister(newMember);
-    alert(`🎉 註冊成功！歡迎 ${newMember.name}，請點擊登入！`);
+    alert(`🎉 註冊成功！歡迎 ${newMember.name}，現在請登入！`);
     setMode('login');
-    setLoginInput(trimmedCode);
+    setLoginAccountInput(trimmedName);
+    setLoginPasswordInput(trimmedCode);
+  };
+
+  const handleLoginSubmit = () => {
+    const acc = loginAccountInput.trim();
+    const pwd = loginPasswordInput.trim();
+    if (!acc) return alert("請輸入用戶名稱或登入代碼！");
+
+    let found = allMembers.find(m => m.name === acc && m.loginCode === pwd);
+    if (!found) {
+      found = allMembers.find(m => m.loginCode === acc);
+    }
+    if (!found && !pwd) {
+      found = allMembers.find(m => m.name === acc);
+    }
+
+    if (found) {
+      onLogin(found);
+    } else {
+      alert("❌ 查無此帳號或密碼錯誤，請確認！");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-6 text-center font-sans">
+    <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-6 text-center font-sans text-black">
       <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] mb-6 flex items-center justify-center text-4xl shadow-xl animate-bounce overflow-hidden border-2 border-white/50">
         {isImage ? (
           <img src={loginIcon} alt="App Icon" className="w-full h-full object-cover" />
@@ -209,7 +360,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">Dupi Travel</h1>
       <p className="text-xs text-gray-400 mb-6 font-black tracking-widest uppercase">Multi-user Travel Planner</p>
 
-      {/* 切換登入與註冊按鈕 */}
+      {/* 切換登入與註冊 */}
       <div className="w-full max-w-xs bg-white rounded-2xl p-1 mb-6 flex shadow-sm border border-gray-100 font-black">
         <button
           onClick={() => setMode('login')}
@@ -226,29 +377,32 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       </div>
 
       {mode === 'login' ? (
-        <div className="w-full max-w-xs space-y-4">
+        <div className="w-full max-w-xs space-y-3 font-black">
+          <input
+            type="text"
+            value={loginAccountInput}
+            onChange={(e) => setLoginAccountInput(e.target.value)}
+            placeholder="請輸入用戶名稱 (或代碼)..."
+            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
+          />
           <input
             type="password"
-            value={loginInput}
-            onChange={(e) => setLoginInput(e.target.value)}
-            placeholder="請輸入登入密碼 / 代碼..."
-            className="w-full p-5 bg-white rounded-[24px] font-black text-black outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
+            value={loginPasswordInput}
+            onChange={(e) => setLoginPasswordInput(e.target.value)}
+            placeholder="請輸入密碼 (若無可留空)..."
+            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
           />
           <button
-            onClick={() => {
-              const found = allMembers.find(m => m.loginCode === loginInput.trim());
-              if (found) onLogin(found); else alert('❌ 查無登入代碼或密碼錯誤');
-            }}
-            className="w-full py-5 bg-[#86A760] text-white rounded-[24px] font-black shadow-lg active:scale-95 transition-transform"
+            onClick={handleLoginSubmit}
+            className="w-full py-4 bg-[#86A760] text-white rounded-[22px] font-black shadow-lg active:scale-95 transition-transform mt-2"
           >
             LOGIN
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-xs bg-white p-6 rounded-[32px] shadow-xl text-left border border-gray-100 space-y-4 font-black">
-          {/* 頭像選擇 */}
+        <div className="w-full max-w-xs bg-white p-6 rounded-[32px] shadow-xl text-left border border-gray-100 space-y-3 font-black">
           <div>
-            <label className="text-[10px] text-gray-400 ml-1">選擇頭像</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">選擇頭像</label>
             <div className="flex items-center gap-2 mt-2">
               <img src={regAvatar} className="w-12 h-12 rounded-full border-2 border-[#5E9E8E] object-cover shadow-sm shrink-0" />
               <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
@@ -263,52 +417,53 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
               </div>
             </div>
             <div className="mt-2">
-              <ImageUploader label="上傳自訂頭像照片" maxDimension={250} quality={0.7} onUpload={(b64) => setRegAvatar(b64)} />
+              <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64) => setRegAvatar(b64)} />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-400 ml-1">用戶名稱 (Name)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (不可與他人重複)</label>
             <input
-              placeholder="你的稱呼 (如: 小明)"
+              type="text"
+              placeholder="你的用戶名稱 (如: 柴犬)"
               value={regName}
               onChange={(e) => setRegName(e.target.value)}
-              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
             />
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-400 ml-1">登入密碼 / 代碼 (Login Code)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">登入密碼 (可自由設定)</label>
             <input
               type="password"
-              placeholder="設定你的專屬登入密碼"
+              placeholder="設定你的密碼 (可自選數字或字母)"
               value={regCode}
               onChange={(e) => setRegCode(e.target.value)}
-              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
             />
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-400 ml-1">確認密碼 (Confirm Code)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">確認密碼 (Confirm Password)</label>
             <input
               type="password"
-              placeholder="再次輸入登入密碼"
+              placeholder="再次輸入密碼"
               value={regConfirmCode}
               onChange={(e) => setRegConfirmCode(e.target.value)}
-              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100"
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
             />
           </div>
 
-          {/* 4 位數圖形數字驗證碼 */}
           <div>
-            <label className="text-[10px] text-gray-400 ml-1">4 位數數字驗證碼</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">4 位數數字驗證碼</label>
             <div className="flex gap-2 items-center mt-1">
               <input
+                type="text"
                 placeholder="輸入右方 4 碼"
                 value={captchaInput}
                 onChange={(e) => setCaptchaInput(e.target.value)}
                 maxLength={4}
-                className="flex-1 p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black border border-gray-100 text-center tracking-widest font-mono"
+                className="flex-1 p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 text-center tracking-widest font-mono"
               />
               <div
                 onClick={refreshCaptcha}
@@ -318,7 +473,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
                 {captchaCode}
               </div>
             </div>
-            <p className="text-[9px] text-gray-400 mt-1 ml-1 cursor-pointer" onClick={refreshCaptcha}>↻ 點擊圖形可更換驗證碼</p>
+            <p className="text-[9px] text-gray-400 mt-1 ml-1 cursor-pointer font-black" onClick={refreshCaptcha}>↻ 點擊圖形可更換驗證碼</p>
           </div>
 
           <button
@@ -333,7 +488,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面 (支援旅行代碼、加入旅行、Wayne 全局查看開關)
+// 2. 主畫面
 function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
@@ -343,7 +498,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showLoginIconModal, setShowLoginIconModal] = useState(false);
 
-  // Wayne 管理員專屬：是否切換為「查看全站所有行程」視角
   const [wayneViewAll, setWayneViewAll] = useState(false);
 
   const todayStr = useMemo(() => getTodayDateString(), []);
@@ -357,9 +511,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
     joinCode: ''
   });
 
-  // 行程篩選邏輯：
-  // 如果是 Wayne 且開啟了「全域視角」，顯示全站所有行程；
-  // 否則，無論是 Wayne 還是一般用戶，都只顯示「自己有加入」的行程！
   const visibleTrips = useMemo(() => {
     if (user.loginCode === 'wayne' && wayneViewAll) {
       return allTrips;
@@ -368,7 +519,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   }, [allTrips, user, wayneViewAll]);
 
   return (
-    <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32">
+    <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
       {/* 頂部成員與選單 */}
       <div className="flex justify-between items-center mb-6 relative">
         <div className="font-black">
@@ -388,21 +539,21 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 <p className="text-[10px] text-gray-400 font-mono">Code: {user.loginCode}</p>
               </div>
 
-              <button onClick={() => { setShowUserDropdown(false); setEditingMember(user); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-blue-600">
-                👤 修改個人設定 (Code/姓名)
+              <button onClick={() => { setShowUserDropdown(false); setEditingMember(user); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-blue-600 font-black">
+                👤 修改個人設定 (頭像/密碼)
               </button>
 
               {user.loginCode === 'wayne' && (
                 <>
-                  <button onClick={() => { setShowUserDropdown(false); setShowLoginIconModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-purple-600">
+                  <button onClick={() => { setShowUserDropdown(false); setShowLoginIconModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-purple-600 font-black">
                     🖼️ 更換登入頁圖示
                   </button>
-                  <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2">
+                  <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 font-black">
                     ⚙️ 成員管理名冊
                   </button>
                 </>
               )}
-              <button onClick={() => { setShowUserDropdown(false); onLogout(); }} className="w-full text-left p-2.5 rounded-xl text-xs text-red-500 hover:bg-red-50 flex items-center gap-2">
+              <button onClick={() => { setShowUserDropdown(false); onLogout(); }} className="w-full text-left p-2.5 rounded-xl text-xs text-red-500 hover:bg-red-50 flex items-center gap-2 font-black">
                 🚪 登出帳號
               </button>
             </div>
@@ -420,7 +571,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
           <button onClick={() => {
             const nextNotice = prompt("修改首頁公告內容：", notice);
             if (nextNotice !== null) onUpdateNotice(nextNotice);
-          }} className="text-[10px] bg-white px-3 py-1.5 rounded-xl shadow-sm hover:bg-amber-50 shrink-0 ml-2">
+          }} className="text-[10px] bg-white px-3 py-1.5 rounded-xl shadow-sm hover:bg-amber-50 shrink-0 ml-2 font-black">
             🖋️ 編輯公告
           </button>
         )}
@@ -433,7 +584,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
             <span className="text-base">👑</span>
             <div>
               <p className="text-xs text-purple-950 font-black">{wayneViewAll ? '當前視角：全站所有行程 (管理者視角)' : '當前視角：僅我的行程 (個人視角)'}</p>
-              <p className="text-[9px] text-gray-400">{wayneViewAll ? '顯示系統內所有人的行程' : '主頁乾淨整齊，只保留 Wayne 有參與的行程'}</p>
+              <p className="text-[9px] text-gray-400 font-black">{wayneViewAll ? '顯示系統內所有人的行程' : '主頁乾淨整齊，只保留 Wayne 有參與的行程'}</p>
             </div>
           </div>
           <button
@@ -451,15 +602,13 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
           {wayneViewAll ? 'All Trips (Global View)' : 'My Trips'}
         </h3>
         <div className="flex gap-2">
-          {/* 加入旅行按鈕（所有用戶皆可使用） */}
           <button
             onClick={() => { setJoinCodeInput(''); setShowJoinTripModal(true); }}
-            className="text-[10px] bg-emerald-600 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform"
+            className="text-[10px] bg-emerald-600 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform font-black"
           >
             ➕ 加入旅行 (代碼)
           </button>
           
-          {/* 新增行程按鈕（所有用戶皆可自行開團） */}
           <button
             onClick={() => {
               const today = getTodayDateString();
@@ -467,7 +616,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               setNewTrip({ id: '', title: '', startDate: today, endDate: today, emoji: '☃️', memberIds: [user.id], joinCode: freshJoinCode });
               setShowAddTrip(true);
             }}
-            className="text-[10px] bg-blue-500 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform"
+            className="text-[10px] bg-blue-500 text-white px-3.5 py-2 rounded-full shadow-md active:scale-95 transition-transform font-black"
           >
             + NEW TRIP
           </button>
@@ -488,16 +637,15 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               <div className="w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0">{trip.emoji}</div>
               <div className="flex-1 overflow-hidden">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-lg text-black truncate">{trip.title}</h4>
+                  <h4 className="text-lg text-black truncate font-black">{trip.title}</h4>
                   <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black">
                     代碼: {trip.joinCode}
                   </span>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter">{trip.startDate} ~ {trip.endDate}</p>
-                <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono">成員：{trip.memberIds.length} 人</p>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter font-black">{trip.startDate} ~ {trip.endDate}</p>
+                <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono font-black">成員：{trip.memberIds.length} 人</p>
               </div>
             </button>
-            {/* 只有行程發起人或 Wayne 可以刪除該行程 */}
             {(user.loginCode === 'wayne' || trip.memberIds[0] === user.id) && (
               <button
                 onClick={(e) => {
@@ -513,7 +661,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         ))}
       </div>
 
-      {/* 💥 輸入旅行代碼加入彈窗 */}
+      {/* 輸入旅行代碼加入彈窗 */}
       {showJoinTripModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -521,11 +669,12 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
             <p className="text-xs text-gray-400 text-center mb-6">請向旅伴索取 6 位數旅行代碼（例如 TK82M9）</p>
 
             <input
+              type="text"
               placeholder="輸入 6 位英文或數字代碼..."
               value={joinCodeInput}
               onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
               maxLength={6}
-              className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200 text-[#5E9E8E]"
+              className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200 text-black font-black"
             />
 
             <div className="flex gap-4">
@@ -548,25 +697,25 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 建立新行程彈窗（自動配發 6 碼代碼，不再需要選成員） */}
+      {/* 建立新行程彈窗 */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
              <h3 className="text-xl mb-4 italic uppercase tracking-tighter">Setup New Trip</h3>
              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 text-center">
-               <p className="text-[10px] text-emerald-700">自動生成專屬旅行代碼（旅伴輸入即可加入）</p>
+               <p className="text-[10px] text-emerald-700 font-black">自動生成專屬旅行代碼（旅伴輸入即可加入）</p>
                <p className="text-2xl font-mono text-emerald-900 font-black tracking-widest mt-0.5">{newTrip.joinCode}</p>
              </div>
 
-             <input placeholder="Trip Title (e.g. 2026 東京行)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
+             <input placeholder="Trip Title (e.g. 2026 東京行)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
              <div className="grid grid-cols-2 gap-4 mb-6">
                <div>
-                 <label className="text-[10px] text-gray-400 ml-1">開始日期</label>
-                 <input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black" />
+                 <label className="text-[10px] text-gray-500 ml-1 font-black">開始日期</label>
+                 <input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" />
                </div>
                <div>
-                 <label className="text-[10px] text-gray-400 ml-1">結束日期</label>
-                 <input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black" />
+                 <label className="text-[10px] text-gray-500 ml-1 font-black">結束日期</label>
+                 <input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" />
                </div>
              </div>
 
@@ -599,7 +748,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   <span>{loginIcon || '❄️'}</span>
                 )}
               </div>
-              <ImageUploader label="上傳自訂圖案/照片" maxDimension={300} quality={0.8} onUpload={(b64) => onUpdateLoginIcon(b64)} />
+              <ImageUploader label="上傳自訂圖案 (可調整大小)" maxDimension={300} onUpload={(b64) => onUpdateLoginIcon(b64)} />
             </div>
 
             <div className="flex gap-2 mb-6">
@@ -627,14 +776,14 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
             <div className="flex justify-between items-center mb-8 italic"><h3 className="text-xl">USER ADMIN (WAYNE ONLY)</h3><button onClick={()=>setShowUserAdmin(false)} className="text-gray-300">✕</button></div>
-            <button onClick={() => setEditingMember({id: Date.now().toString(), name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-3xl mb-8 text-gray-300">+ NEW USER</button>
+            <button onClick={() => setEditingMember({id: Date.now().toString(), name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-3xl mb-8 text-gray-400 font-black">+ NEW USER</button>
             <div className="space-y-4">
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
                   <div className="flex-1 font-black">
                     {m.name}
-                    <p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p>
+                    <p className="text-[9px] opacity-40 tracking-widest uppercase">Password: {m.loginCode}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
@@ -671,26 +820,26 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   <img key={idx} src={av} onClick={() => setEditingMember({...editingMember, avatar: av})} className="w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition-transform border border-gray-200" />
                 ))}
               </div>
-              <ImageUploader label="上傳相片 (已啟用極致壓縮)" maxDimension={250} quality={0.7} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
+              <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
-            <label className="text-[10px] text-gray-400 ml-2">姓名</label>
-            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
             
-            <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Login Code)</label>
-            <input placeholder="Login Code" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100 font-black" />
+            <label className="text-[10px] text-gray-500 ml-2 font-black">姓名 (用戶名稱)</label>
+            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
+            
+            <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Login Password)</label>
+            <input placeholder="Password" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
             
             <div className="flex gap-4">
               <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
               <button onClick={()=>{
                 const trimmedName = editingMember.name.trim();
                 if (!trimmedName) return alert("請輸入姓名！");
-                const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name === trimmedName);
-                if (nameConflict) return alert("該名字有人使用，請更換名字");
+                
+                const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name.toLowerCase() === trimmedName.toLowerCase());
+                if (nameConflict) return alert("該用戶名稱已被他人使用，請更換！");
 
                 const trimmedCode = editingMember.loginCode.trim();
-                if (!trimmedCode) return alert("請輸入登入代碼！");
-                const codeConflict = allMembers.some(m => m.id !== editingMember.id && m.loginCode === trimmedCode);
-                if (codeConflict) return alert("該CODE有人使用，請更換CODE");
+                if (!trimmedCode) return alert("請輸入登入密碼！");
 
                 const timestamp = new Date().toLocaleString();
                 const newLogs = [...(editingMember.editLogs || []), `Modified at ${timestamp}`];
@@ -714,7 +863,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   );
 }
 
-// 3. 主程式元件 (顯示專屬旅行邀請代碼)
+// 3. 主程式元件
 function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
@@ -1019,8 +1168,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         <div onClick={onBack} className="flex items-center gap-3 cursor-pointer">
           <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">←</div>
           <div>
-            <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter leading-tight">DUPI TRAVEL</h1>
-            <p className="text-[9px] text-gray-400 font-mono tracking-wider">CODE: {tripData.joinCode}</p>
+            <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter leading-tight font-black">DUPI TRAVEL</h1>
+            <p className="text-[9px] text-gray-400 font-mono tracking-wider font-black">CODE: {tripData.joinCode}</p>
           </div>
         </div>
         <div className="flex -space-x-2">
@@ -1085,7 +1234,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                       placeholder="輸入城市 (如: 台北、大阪)..." 
                       value={newCityName} 
                       onChange={e => setNewCityName(e.target.value)} 
-                      className="p-2 px-3 bg-gray-50 rounded-xl text-xs outline-none border border-gray-100 font-black"
+                      className="p-2 px-3 bg-gray-50 rounded-xl text-xs outline-none border border-gray-200 font-black text-black placeholder:text-gray-400"
                     />
                     <button 
                       onClick={() => {
@@ -1095,7 +1244,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         sync({ cityConfigs: next });
                         setNewCityName('');
                       }}
-                      className="bg-[#5E9E8E] text-white text-[10px] px-3 py-2 rounded-xl shadow-sm active:scale-95"
+                      className="bg-[#5E9E8E] text-white text-[10px] px-3 py-2 rounded-xl shadow-sm active:scale-95 font-black"
                     >
                       + 新增
                     </button>
@@ -1122,12 +1271,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 items-center">
-                        <span className="text-[10px] text-gray-400 font-black">待在此處的日期：</span>
+                        <span className="text-[10px] text-gray-500 font-black">待在此處的日期：</span>
                         {dynamicTripDates.map((dStr, idx) => {
                           const dayNum = idx + 1;
                           const isChecked = c.dayIndexes.includes(dayNum);
                           return (
-                            <label key={dayNum} className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl cursor-pointer transition-all font-black ${isChecked ? 'bg-[#5E9E8E] text-white shadow-sm' : 'bg-white text-gray-400 border border-gray-200'}`}>
+                            <label key={dayNum} className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl cursor-pointer transition-all font-black ${isChecked ? 'bg-[#5E9E8E] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'}`}>
                               <input 
                                 type="checkbox" 
                                 checked={isChecked} 
@@ -1164,7 +1313,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 {dynamicTripDates.map((dateStr, idx) => {
                   const d = idx + 1;
                   return (
-                    <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-400 border border-gray-100'}`}>
+                    <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-500 border border-gray-200'}`}>
                       <span className="text-[10px]">{dateStr}</span>
                       <span className="text-xl">{d}</span>
                     </button>
@@ -1179,18 +1328,18 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     <div key={item.id} className="flex gap-4 relative">
                         <div className="w-10 flex flex-col items-center shrink-0">
                             <div className="w-4 h-4 rounded-full bg-white border-4 border-[#86A760] z-10 mt-1 shadow-sm"></div>
-                            <span className="text-[10px] text-gray-400 mt-2 font-mono">{item.time}</span>
+                            <span className="text-[10px] text-gray-500 mt-2 font-mono font-black">{item.time}</span>
                         </div>
                         <div className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative group">
                             <div className="flex justify-between items-start">
-                              <h4 className="font-black text-sm">{item.icon} {item.title}</h4>
+                              <h4 className="font-black text-sm text-black">{item.icon} {item.title}</h4>
                               {item.lastUpdatedById && (
                                 <span className="text-[9px] text-[#5E9E8E] bg-green-50 px-2 py-0.5 rounded-full font-black">
                                   最後編輯: {getMember(item.lastUpdatedById).name}
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] opacity-40 mt-1 leading-relaxed">{item.desc}</p>
+                            <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black">{item.desc}</p>
                             <div className="mt-4 flex justify-between items-center">
                                 <button onClick={(e) => { e.stopPropagation(); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`, '_blank'); }} className="text-[10px] bg-gray-50 text-[#5E9E8E] px-3 py-1.5 rounded-full font-black shadow-inner active:scale-95">📍 GOOGLE MAP</button>
                                 <div className="flex gap-3 z-20">
@@ -1211,7 +1360,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
                 {['機票','憑證'].map(t=>(
-                    <button key={t} onClick={()=>setBookSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${bookSubTab===t?'bg-[#E9C46A] text-white shadow-md scale-105':'text-gray-300'}`}>{t}</button>
+                    <button key={t} onClick={()=>setBookSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${bookSubTab===t?'bg-[#E9C46A] text-white shadow-md scale-105':'text-gray-400'}`}>{t}</button>
                 ))}
             </div>
 
@@ -1219,7 +1368,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Flight Info</h3>
-                  <button onClick={()=>{setFlightForm({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' }); setShowFlightModal({show:true, type:'add', data:null});}} className="bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full">+ ADD</button>
+                  <button onClick={()=>{setFlightForm({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' }); setShowFlightModal({show:true, type:'add', data:null});}} className="bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full font-black">+ ADD</button>
                 </div>
                 {sortedFlights.map(f => (
                   <div key={f.id} className="bg-white rounded-[40px] shadow-2xl overflow-hidden border border-blue-50 relative p-6 font-black">
@@ -1229,11 +1378,11 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     </div>
                     <div className="flex justify-between text-center items-center">
                       <div><p className="text-3xl font-black">{f.fromCode}</p><p className="text-blue-500 font-mono text-sm">{f.depTime}</p></div>
-                      <div className="flex-1 flex flex-col items-center opacity-30"><span className="text-[10px] uppercase font-black">{f.duration}</span><div className="w-full h-px bg-blue-100 my-1 relative"><span className="absolute -top-2 left-1/2 -translate-x-1/2">✈️</span></div><p className="text-[10px] font-bold text-black">{f.date}</p></div>
+                      <div className="flex-1 flex flex-col items-center opacity-40"><span className="text-[10px] uppercase font-black">{f.duration}</span><div className="w-full h-px bg-blue-100 my-1 relative"><span className="absolute -top-2 left-1/2 -translate-x-1/2">✈️</span></div><p className="text-[10px] font-black text-black">{f.date}</p></div>
                       <div><p className="text-3xl font-black">{f.toCode}</p><p className="text-blue-600 font-mono text-sm">{f.arrTime}</p></div>
                     </div>
                     <div className="flex justify-between items-center mt-4">
-                      <span className="text-[9px] text-gray-400">最後編輯: {getMember(f.lastUpdatedById).name}</span>
+                      <span className="text-[9px] text-gray-400 font-black">最後編輯: {getMember(f.lastUpdatedById).name}</span>
                       <div className="flex gap-3">
                         <button onClick={()=>{setFlightForm(f); setShowFlightModal({show:true, type:'edit', data:f});}} className="text-blue-400 text-xs">🖋️</button>
                         <button onClick={()=>{if(confirm('確定刪除此機票？')){const n=flights.filter(i=>i.id!==f.id); setFlights(n); sync({flights:n});}}} className="text-red-300 text-xs">🗑️</button>
@@ -1254,12 +1403,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs">✕</button>
                       </div>
                     </div>
-                    <p className="text-[9px] text-gray-400 mb-3">最後編輯: {getMember(b.lastUpdatedById).name}</p>
+                    <p className="text-[9px] text-gray-400 mb-3 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
                     {b.image && <img src={b.image} className="w-full rounded-[24px] shadow-lg" />}
                   </div>
                 ))}
                 <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center">
-                  <ImageUploader label="UPLOAD VOUCHER (壓縮保存)" maxDimension={800} quality={0.7} onUpload={(b64)=>{const title=prompt("請輸入憑證名稱:"); if(title){const n=[{id:Date.now(), type:'憑證', title, image:b64, lastUpdatedById: user.id}, ...bookings]; setBookings(n); sync({bookings:n});}}} />
+                  <ImageUploader label="UPLOAD VOUCHER (可調整)" maxDimension={800} onUpload={(b64)=>{const title=prompt("請輸入憑證名稱:"); if(title){const n=[{id:Date.now(), type:'憑證', title, image:b64, lastUpdatedById: user.id}, ...bookings]; setBookings(n); sync({bookings:n});}}} />
                 </div>
               </div>
             )}
@@ -1270,8 +1419,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
-              <button onClick={() => setExpenseSubTab('明細')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '明細' ? 'bg-[#E9C46A] text-white shadow-md scale-105' : 'text-gray-300'}`}>記帳明細</button>
-              <button onClick={() => setExpenseSubTab('查帳')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '查帳' ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'text-gray-300'}`}>📊 查帳統計</button>
+              <button onClick={() => setExpenseSubTab('明細')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '明細' ? 'bg-[#E9C46A] text-white shadow-md scale-105' : 'text-gray-400'}`}>記帳明細</button>
+              <button onClick={() => setExpenseSubTab('查帳')} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${expenseSubTab === '查帳' ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'text-gray-400'}`}>📊 查帳統計</button>
             </div>
 
             {expenseSubTab === '明細' ? (
@@ -1283,14 +1432,14 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           key={c}
                           type="button"
                           onClick={() => setCurrency(c)}
-                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${currency === c ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${currency === c ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
                         >
                           {c} ({c === 'JPY' ? '日幣' : c === 'TWD' ? '台幣' : '人民幣'})
                         </button>
                       ))}
                     </div>
 
-                    <p className="text-[10px] opacity-40 mb-2 ml-1">消費日期 (行程日與旅行外自訂)</p>
+                    <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">消費日期 (行程日與旅行外自訂)</p>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 items-center">
                       {dynamicTripDates.map((dStr, idx) => (
                         <button
@@ -1316,8 +1465,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     </div>
 
                     {expenseDate.includes('旅行外') && (
-                      <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                        <span className="text-[10px] text-gray-400">選擇旅行外具體日期：</span>
+                      <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                        <span className="text-[10px] text-gray-500 font-black">選擇旅行外具體日期：</span>
                         <input 
                           type="date" 
                           value={customOtherDate}
@@ -1325,17 +1474,17 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             setCustomOtherDate(e.target.value);
                             setExpenseDate(e.target.value.slice(5).replace('-', '/') + ' (旅行外)');
                           }}
-                          className="bg-white p-1.5 px-3 rounded-xl text-xs font-black outline-none border border-gray-200"
+                          className="bg-white p-1.5 px-3 rounded-xl text-xs font-black text-black outline-none border border-gray-200"
                         />
                       </div>
                     )}
 
-                    <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="消費內容 (項目)..." className="w-full p-4 bg-gray-50 rounded-2xl mb-2 outline-none font-black shadow-inner" />
+                    <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="消費內容 (項目)..." className="w-full p-4 bg-gray-50 rounded-2xl mb-2 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3">
-                      {['早餐','午餐','晚餐','交通','娛樂','購物'].map(q=>(<button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-500 font-black shrink-0 active:bg-gray-200">{q}</button>))}
+                      {['早餐','午餐','晚餐','交通','娛樂','購物'].map(q=>(<button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-600 font-black shrink-0 active:bg-gray-200">{q}</button>))}
                     </div>
                     
-                    <input value={expenseNote} onChange={e=>setExpenseNote(e.target.value)} placeholder="備註說明 (選填)..." className="w-full p-3 bg-gray-50 rounded-xl mb-3 text-xs outline-none font-black shadow-inner border border-gray-100" />
+                    <input value={expenseNote} onChange={e=>setExpenseNote(e.target.value)} placeholder="備註說明 (選填)..." className="w-full p-3 bg-gray-50 rounded-xl mb-3 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                     
                     <input 
                       type="number" 
@@ -1345,21 +1494,21 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         const val = e.target.value.replace('-', '');
                         setAmount(val);
                       }} 
-                      placeholder={`金額 (${currency}) - 請輸入大於 0 的正整數`} 
-                      className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black shadow-inner mb-4" 
+                      placeholder={`金額 (${currency}) - 請輸入正數金額`} 
+                      className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black text-lg border border-gray-200 mb-4 placeholder:text-gray-400" 
                     />
                     
-                    <p className="text-[10px] opacity-30 mb-2 ml-2">PAY METHOD</p>
+                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAY METHOD</p>
                     <div className="grid grid-cols-4 gap-2 mb-4">
                       {['現金','信用卡','Suica','PayPay'].map(p=>(
-                        <button key={p} onClick={()=>setPayMethod(p)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${payMethod===p?'bg-[#5E9E8E] text-white shadow-md':'bg-gray-100 text-gray-400'}`}>{p}</button>
+                        <button key={p} onClick={()=>setPayMethod(p)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${payMethod===p?'bg-[#5E9E8E] text-white shadow-md':'bg-gray-100 text-gray-500'}`}>{p}</button>
                       ))}
                     </div>
 
-                    <p className="text-[10px] opacity-30 mb-2 ml-2">PAYER (付款人)</p>
+                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (付款人)</p>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
                       {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
-                        <button key={m.id} onClick={()=>setExpensePayerId(m.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-400'}`}>
+                        <button key={m.id} onClick={()=>setExpensePayerId(m.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}>
                           <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" /> {m.name}
                         </button>
                       ))}
@@ -1394,22 +1543,22 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
 
                 <div className="space-y-3 font-black">
                     {records.map(r=>(
-                        <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border pr-12 relative group">
+                        <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-12 relative group">
                             <div className="flex items-center gap-3">
                                 <img src={getMember(r.payerId).avatar} className="w-6 h-6 rounded-full shadow-sm object-cover" />
                                 <div className="text-xs font-black">
                                   {r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span>
-                                  {r.note && <p className="text-[10px] text-gray-500 font-normal mt-0.5">💬 {r.note}</p>}
-                                  <p className="text-[8px] opacity-40 font-mono italic">{r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})</p>
+                                  {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
+                                  <p className="text-[8px] text-gray-400 font-mono italic">{r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})</p>
                                 </div>
                             </div>
                             <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">
                               {r.amount} {r.currency || 'JPY'}
-                              <p className="text-[9px] text-gray-300 font-black">≈ NT$ {r.twdAmount}</p>
+                              <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
                             </div>
                             <div className="absolute right-4 flex flex-col gap-2">
-                              <button onClick={()=>{setEditingRecordId(r.id); setCategory(r.category); setAmount(r.amount); setExpenseNote(r.note || ''); setPayMethod(r.payMethod); setExpenseDate(r.date); setCurrency(r.currency || 'JPY'); setExpensePayerId(r.payerId); window.scrollTo({top:0, behavior:'smooth'});}} className="text-blue-300 text-[10px]">🖋️</button>
-                              <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-300 text-sm">✕</button>
+                              <button onClick={()=>{setEditingRecordId(r.id); setCategory(r.category); setAmount(r.amount); setExpenseNote(r.note || ''); setPayMethod(r.payMethod); setExpenseDate(r.date); setCurrency(r.currency || 'JPY'); setExpensePayerId(r.payerId); window.scrollTo({top:0, behavior:'smooth'});}} className="text-blue-400 text-[10px]">🖋️</button>
+                              <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
                             </div>
                         </div>
                     ))}
@@ -1423,7 +1572,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                   <div className="flex flex-wrap gap-2 mb-4">
                     <button 
                       onClick={() => setFilterPayerIds([])}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterPayerIds.length === 0 ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterPayerIds.length === 0 ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
                     >
                       全部成員
                     </button>
@@ -1436,7 +1585,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             const next = isSel ? filterPayerIds.filter(id => id !== m.id) : [...filterPayerIds, m.id];
                             setFilterPayerIds(next);
                           }}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isSel ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isSel ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
                         >
                           <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
                           {m.name}
@@ -1446,27 +1595,27 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                   </div>
 
                   <div className="bg-[#5E9E8E]/10 p-5 rounded-2xl border border-[#5E9E8E]/20">
-                    <p className="text-xs opacity-60 uppercase">篩選統計總額 (折合台幣)</p>
+                    <p className="text-xs opacity-70 uppercase">篩選統計總額 (折合台幣)</p>
                     <h3 className="text-3xl font-mono mt-1 text-[#5E9E8E]">NT$ {filteredRecords.reduce((sum, r) => sum + Number(r.twdAmount), 0).toLocaleString()}</h3>
-                    <p className="text-[10px] text-gray-400 mt-1">共 {filteredRecords.length} 筆支出紀錄</p>
+                    <p className="text-[10px] text-gray-500 mt-1">共 {filteredRecords.length} 筆支出紀錄</p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-xs text-gray-400 uppercase tracking-wider ml-1">支出明細列表</h4>
+                  <h4 className="text-xs text-gray-500 uppercase tracking-wider ml-1">支出明細列表</h4>
                   {filteredRecords.map(r => (
-                    <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-50">
+                    <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100">
                       <div className="flex items-center gap-3">
                         <img src={getMember(r.payerId).avatar} className="w-8 h-8 rounded-full object-cover" />
                         <div>
-                          <p className="text-xs font-black">{r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span></p>
-                          {r.note && <p className="text-[10px] text-gray-500 font-normal">💬 {r.note}</p>}
+                          <p className="text-xs font-black text-black">{r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span></p>
+                          {r.note && <p className="text-[10px] text-gray-600 font-normal">💬 {r.note}</p>}
                           <p className="text-[9px] text-gray-400 font-mono mt-0.5">{r.payMethod} · 付款人: {getMember(r.payerId).name}</p>
                         </div>
                       </div>
                       <div className="text-right font-mono text-[#5E9E8E]">
                         {r.amount} {r.currency || 'JPY'}
-                        <p className="text-[9px] text-gray-300">≈ NT$ {r.twdAmount}</p>
+                        <p className="text-[9px] text-gray-400">≈ NT$ {r.twdAmount}</p>
                       </div>
                     </div>
                   ))}
@@ -1480,9 +1629,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         {activeTab === '日誌' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
-                <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black border-none shadow-inner" />
+                <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black text-black placeholder:text-gray-400 border border-gray-200" />
                 <div className="flex justify-between items-center">
-                    <ImageUploader label="上傳照片 (壓縮保存)" maxDimension={800} quality={0.7} onUpload={img => setNewJournal({...newJournal, image: img})} />
+                    <ImageUploader label="上傳照片 (可縮放裁切)" maxDimension={800} onUpload={img => setNewJournal({...newJournal, image: img})} />
                     <button onClick={()=>{
                         if(!newJournal.content.trim()) return alert("請輸入日誌內容！");
                         const n: JournalEntry[] = [{id:Date.now(), authorId:user.id, content:newJournal.content.trim(), image:newJournal.image, date:new Date().toLocaleString(), lastUpdatedById: user.id}, ...journals];
@@ -1501,10 +1650,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           <img src={getMember(j.authorId).avatar} className="w-10 h-10 rounded-full border border-gray-100 object-cover" />
                           <div>
                             <p className="text-sm font-black text-black">{getMember(j.authorId).name}</p>
-                            <p className="text-[9px] opacity-30 italic font-mono uppercase tracking-widest">{j.date} · 最後編輯: {getMember(j.lastUpdatedById).name}</p>
+                            <p className="text-[9px] text-gray-400 italic font-mono uppercase tracking-widest">{j.date} · 最後編輯: {getMember(j.lastUpdatedById).name}</p>
                           </div>
                       </div>
-                      <p className="text-sm mb-4 leading-relaxed font-black text-gray-700">{j.content}</p>
+                      <p className="text-sm mb-4 leading-relaxed font-black text-gray-800">{j.content}</p>
                       {j.image && <img src={j.image} className="w-full rounded-[24px] shadow-sm border border-gray-100" />}
                   </div>
               ))}
@@ -1517,22 +1666,22 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           <div className="animate-in fade-in pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
                 {['待辦','行李','採購'].map(t=>(
-                    <button key={t} onClick={()=>setPrepSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${prepSubTab===t?'bg-[#86A760] text-white shadow-md scale-105':'text-gray-300'}`}>{t}</button>
+                    <button key={t} onClick={()=>setPrepSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${prepSubTab===t?'bg-[#86A760] text-white shadow-md scale-105':'text-gray-400'}`}>{t}</button>
                 ))}
             </div>
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black font-black">
-                <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black shadow-inner border-none" />
+                <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                 
-                <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black shadow-inner border-none" />
+                <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                 
-                <p className="text-[10px] opacity-30 mb-2 ml-1">指派人員 (預選自己，可點選切換或複選)</p>
+                <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
                 <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
                     {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
                         <button key={m.id} onClick={()=>{
                             const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
                             setNewTodoInput({...newTodoInput, assigneeIds: ids});
-                        }} className={`p-2 px-4 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-inner scale-105':'bg-gray-100 text-gray-400 border-transparent'}`}>
+                        }} className={`p-2 px-4 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-inner scale-105':'bg-gray-100 text-gray-500 border-gray-200'}`}>
                           <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
                           {m.name}
                         </button>
@@ -1546,16 +1695,16 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     const n = editingTodoId ? todos.map(t => t.id === editingTodoId ? newItem : t) : [newItem, ...todos];
                     setTodos(n); sync({todos:n}); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]}); setEditingTodoId(null);
                 }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">{editingTodoId ? 'UPDATE' : 'ADD'}</button>
-                {editingTodoId && <button onClick={()=>{setEditingTodoId(null); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]});}} className="w-full mt-2 text-xs opacity-30 font-black">Cancel Edit</button>}
+                {editingTodoId && <button onClick={()=>{setEditingTodoId(null); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]});}} className="w-full mt-2 text-xs text-gray-400 font-black">Cancel Edit</button>}
             </div>
 
             <div className="space-y-4">
                 {todos.filter(t=>t.category===prepSubTab).map(todo => (
                     <div key={todo.id} className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group font-black">
                         <div className="flex flex-col flex-1 pr-4">
-                            <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-20 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
-                            {todo.note && <p className="text-[10px] text-gray-500 font-normal mt-0.5">💬 {todo.note}</p>}
-                            <p className="text-[9px] text-gray-300 mt-1">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
+                            <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-30 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
+                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {todo.note}</p>}
+                            <p className="text-[9px] text-gray-400 mt-1">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
                             <div className="flex gap-2 mt-2 flex-wrap">
                                 {todo.assigneeIds.map(id => {
                                     const m = getMember(id);
@@ -1567,7 +1716,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                                             const nComp = isDone ? todo.completedAssigneeIds.filter(cid=>cid!==id) : [...todo.completedAssigneeIds, id];
                                             const n = todos.map(t=>t.id===todo.id ? {...t, completedAssigneeIds: nComp, lastUpdatedById: user.id} : t);
                                             setTodos(n); sync({todos:n});
-                                        }} className={`text-[8px] px-3 py-1.5 rounded-full font-black shadow-sm transition-all flex items-center gap-1 ${isDone ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                        }} className={`text-[8px] px-3 py-1.5 rounded-full font-black shadow-sm transition-all flex items-center gap-1 ${isDone ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
                                           <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
                                           {m?.name} {isDone && "✅"}
                                         </button>
@@ -1576,8 +1725,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button onClick={()=>{setEditingTodoId(todo.id); setNewTodoInput({task: todo.task, note: todo.note || '', assigneeIds: todo.assigneeIds});}} className="text-blue-200 text-lg active:text-blue-400">🖋️</button>
-                            <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-200 text-lg active:text-red-400">✕</button>
+                            <button onClick={()=>{setEditingTodoId(todo.id); setNewTodoInput({task: todo.task, note: todo.note || '', assigneeIds: todo.assigneeIds});}} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
+                            <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 text-lg active:text-red-500">✕</button>
                         </div>
                     </div>
                 ))}
@@ -1585,22 +1734,22 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 成員] (展示專屬旅行代碼，方便好友加入) --- */}
+        {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
             {/* 邀請代碼卡片 */}
             <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl p-5 text-white shadow-lg flex justify-between items-center">
               <div>
-                <p className="text-[10px] uppercase opacity-80 tracking-wider">旅行邀請代碼 (SHARE TO FRIENDS)</p>
+                <p className="text-[10px] uppercase opacity-85 tracking-wider font-black">旅行邀請代碼 (SHARE TO FRIENDS)</p>
                 <h3 className="text-2xl font-mono tracking-widest mt-0.5">{tripData.joinCode}</h3>
-                <p className="text-[9px] opacity-75 mt-1">朋友在首頁輸入此 6 碼代碼即可一鍵加入本行程</p>
+                <p className="text-[9px] opacity-80 mt-1 font-black">朋友在首頁輸入此 6 碼代碼即可一鍵加入本行程</p>
               </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(tripData.joinCode);
                   alert(`✅ 旅行代碼【${tripData.joinCode}】已複製到剪貼簿！快傳給朋友吧！`);
                 }}
-                className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs active:scale-95 transition-all shadow-sm"
+                className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs active:scale-95 transition-all shadow-sm font-black"
               >
                 📋 複製代碼
               </button>
@@ -1614,12 +1763,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               const canEditThisMember = user.loginCode === 'wayne' || user.id === m.id;
               const isTripLeader = tripData.memberIds[0] === m.id;
               return (
-                <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-50 font-black relative">
+                <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-100 font-black relative">
                   <img src={m.avatar} className="w-16 h-16 rounded-[24px] object-cover border-2 border-white shadow-md font-black shrink-0" />
                   <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="text-lg text-black font-black">{m.name}</h4>
-                        {isTripLeader && <span className="text-[9px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">開團者</span>}
+                        {isTripLeader && <span className="text-[9px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-black">開團者</span>}
                       </div>
                       {user.loginCode === 'wayne' && (
                         <div className="mt-3 space-y-1.5">
@@ -1640,7 +1789,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         🖋️ 編輯
                       </button>
                     )}
-                    {/* 發起人或管理員 Wayne 可將旅伴請離行程 */}
                     {(user.loginCode === 'wayne' || tripData.memberIds[0] === user.id) && m.id !== tripData.memberIds[0] && (
                       <button 
                         onClick={() => {
@@ -1681,16 +1829,16 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 ))}
               </div>
 
-              <ImageUploader label="上傳自訂頭像 (自動壓縮)" maxDimension={250} quality={0.7} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
+              <ImageUploader label="上傳自訂頭像 (可縮放調整)" maxDimension={300} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
             </div>
 
-            <label className="text-[10px] text-gray-400 ml-2">姓名</label>
-            <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
+            <label className="text-[10px] text-gray-500 ml-2 font-black">姓名 (用戶名稱)</label>
+            <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
             
             {(user.loginCode === 'wayne' || user.id === editingMemberModal.id) && (
               <>
-                <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Login Code)</label>
-                <input placeholder="Login Code" value={editingMemberModal.loginCode} onChange={e=>setEditingMemberModal({...editingMemberModal, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100 font-black" />
+                <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Login Password)</label>
+                <input placeholder="Password" value={editingMemberModal.loginCode} onChange={e=>setEditingMemberModal({...editingMemberModal, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
               </>
             )}
             
@@ -1700,14 +1848,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 const trimmedName = editingMemberModal.name.trim();
                 if (!trimmedName) return alert("請輸入姓名！");
 
-                const nameConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.name === trimmedName);
-                if (nameConflict) return alert("該名字有人使用，請更換名字");
+                const nameConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.name.toLowerCase() === trimmedName.toLowerCase());
+                if (nameConflict) return alert("該用戶名稱已被使用，請更換名稱！");
 
                 if (user.loginCode === 'wayne' || user.id === editingMemberModal.id) {
                   const trimmedCode = editingMemberModal.loginCode.trim();
-                  if (!trimmedCode) return alert("請輸入登入代碼！");
-                  const codeConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.loginCode === trimmedCode);
-                  if (codeConflict) return alert("該CODE有人使用，請更換CODE");
+                  if (!trimmedCode) return alert("請輸入登入密碼！");
                   editingMemberModal.loginCode = trimmedCode;
                 }
 
@@ -1735,18 +1881,18 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
       {/* 行程編輯彈窗 */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
-            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black">
+            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black">
                 <h3 className="text-2xl mb-8 italic text-[#5E9E8E] uppercase tracking-tighter">Edit Travel Stop</h3>
-                <div className="flex gap-3 mb-6 bg-gray-50 rounded-2xl p-2 shadow-inner">
-                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
+                <div className="flex gap-3 mb-6 bg-gray-50 rounded-2xl p-2 shadow-inner border border-gray-200">
+                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
                         {Array.from({length: 24}).map((_,i)=><option key={i} value={i.toString().padStart(2,'0')}>{i.toString().padStart(2,'0')} 點</option>)}
                     </select>
-                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black" value={planForm.time.split(':')[1]} onChange={e=>setPlanForm({...planForm,time:`${planForm.time.split(':')[0]}:${e.target.value}`})}>
+                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[1]} onChange={e=>setPlanForm({...planForm,time:`${planForm.time.split(':')[0]}:${e.target.value}`})}>
                         {['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m} 分</option>)}
                     </select>
                 </div>
-                <input placeholder="要去哪裡？" value={planForm.title} onChange={e=>setPlanForm({...planForm,title:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-4 outline-none text-xl shadow-inner border-none font-black" />
-                <textarea placeholder="備註或細節..." value={planForm.desc} onChange={e=>setPlanForm({...planForm,desc:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-8 outline-none text-sm h-32 leading-relaxed shadow-inner border-none font-black" />
+                <input placeholder="要去哪裡？" value={planForm.title} onChange={e=>setPlanForm({...planForm,title:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-4 outline-none text-xl border border-gray-200 font-black text-black placeholder:text-gray-400" />
+                <textarea placeholder="備註或細節..." value={planForm.desc} onChange={e=>setPlanForm({...planForm,desc:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-8 outline-none text-sm h-32 leading-relaxed border border-gray-200 font-black text-black placeholder:text-gray-400" />
                 <div className="flex gap-4">
                     <button onClick={()=>setShowPlanModal({show:false,type:'add'})} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black uppercase">Cancel</button>
                     <button onClick={()=>{
@@ -1767,7 +1913,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
       {/* 底部 TabBar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t flex justify-around p-4 shadow-2xl z-50">
         {[{id:'行程',icon:'📅'},{id:'預訂',icon:'📔'},{id:'記帳',icon:'👛'},{id:'日誌',icon:'🖋️'},{id:'準備',icon:'💼'},{id:'成員',icon:'👥'}].map(tab=>(
-          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 transition-all duration-300 font-black ${activeTab===tab.id?'text-[#86A760] scale-125 font-black -translate-y-1':'opacity-20'}`}>
+          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 transition-all duration-300 font-black ${activeTab===tab.id?'text-[#86A760] scale-125 font-black -translate-y-1':'opacity-30'}`}>
             <span className="text-2xl">{tab.icon}</span>
             <span className="text-[10px] uppercase font-black tracking-tighter">{tab.id}</span>
           </button>
@@ -1777,28 +1923,28 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
       {/* 機票編輯彈窗 */}
       {showFlightModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-black">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl overflow-y-auto max-h-[90vh] text-black">
             <h3 className="text-2xl mb-6 italic text-[#5E9E8E] uppercase tracking-tighter">{showFlightModal.type === 'add' ? 'Add' : 'Edit'} Flight</h3>
             <div className="space-y-4">
-              <input placeholder="Airline (如: 長榮航空)" value={flightForm.airline} onChange={e=>setFlightForm({...flightForm, airline:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black" />
-              <input placeholder="Flight No. (如: BR198)" value={flightForm.flightNo} onChange={e=>setFlightForm({...flightForm, flightNo:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black" />
+              <input placeholder="Airline (如: 長榮航空)" value={flightForm.airline} onChange={e=>setFlightForm({...flightForm, airline:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
+              <input placeholder="Flight No. (如: BR198)" value={flightForm.flightNo} onChange={e=>setFlightForm({...flightForm, flightNo:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
               
               <div className="grid grid-cols-2 gap-4">
-                <input placeholder="From (如: TPE)" value={flightForm.fromCode} onChange={e=>setFlightForm({...flightForm, fromCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black" />
-                <input placeholder="To (如: NRT)" value={flightForm.toCode} onChange={e=>setFlightForm({...flightForm, toCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black" />
+                <input placeholder="From (如: TPE)" value={flightForm.fromCode} onChange={e=>setFlightForm({...flightForm, fromCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
+                <input placeholder="To (如: NRT)" value={flightForm.toCode} onChange={e=>setFlightForm({...flightForm, toCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
               </div>
               
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-[10px] ml-2 opacity-40">起飛時間 (Dep Time)</label><input type="time" value={flightForm.depTime} onChange={e=>setFlightForm({...flightForm, depTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
-                <div><label className="text-[10px] ml-2 opacity-40">抵達時間 (Arr Time)</label><input type="time" value={flightForm.arrTime} onChange={e=>setFlightForm({...flightForm, arrTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
+                <div><label className="text-[10px] ml-2 text-gray-500 font-black">起飛時間 (Dep Time)</label><input type="time" value={flightForm.depTime} onChange={e=>setFlightForm({...flightForm, depTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black font-mono border border-gray-200" /></div>
+                <div><label className="text-[10px] ml-2 text-gray-500 font-black">抵達時間 (Arr Time)</label><input type="time" value={flightForm.arrTime} onChange={e=>setFlightForm({...flightForm, arrTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black font-mono border border-gray-200" /></div>
               </div>
 
               <div>
-                <label className="text-[10px] ml-2 opacity-40">搭乘日期 (選取行程日)</label>
+                <label className="text-[10px] ml-2 text-gray-500 font-black">搭乘日期 (選取行程日)</label>
                 <select 
                   value={flightForm.date} 
                   onChange={e=>setFlightForm({...flightForm, date: e.target.value})}
-                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black"
+                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black border border-gray-200"
                 >
                   {dynamicTripDates.map((dStr, idx) => (
                     <option key={dStr} value={dStr}>D{idx + 1} ({dStr})</option>
@@ -1806,7 +1952,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 </select>
               </div>
 
-              <input placeholder="飛行時長 (如: 3h 15m)" value={flightForm.duration} onChange={e=>setFlightForm({...flightForm, duration:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black" />
+              <input placeholder="飛行時長 (如: 3h 15m)" value={flightForm.duration} onChange={e=>setFlightForm({...flightForm, duration:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
             </div>
             
             <div className="flex gap-4 mt-8">
@@ -1828,7 +1974,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   );
 }
 
-// 4. 入口點 (同步登入圖示、多使用者註冊與旅行邀請代碼)
+// 4. 入口點 (全域雲端同步)
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -1842,9 +1988,9 @@ export default function AppEntry() {
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v13', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v15', JSON.stringify(mData.content));
     } else {
-      const cachedM = localStorage.getItem('app_members_v13');
+      const cachedM = localStorage.getItem('app_members_v15');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -1853,12 +1999,12 @@ export default function AppEntry() {
           { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v13', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v15', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
 
-    // 2. 同步行程 (確保每個行程都有 joinCode)
+    // 2. 同步行程
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       const ensuredTrips = (tData.content as Trip[]).map(t => ({
@@ -1866,16 +2012,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v13', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v15', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v13');
+      const cachedT = localStorage.getItem('app_trips_v15');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v13', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v15', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -1884,22 +2030,22 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v13', nData.content);
+      localStorage.setItem('app_notice_v15', nData.content);
     }
 
     // 4. 同步登入頁圖示
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v13', iData.content);
+      localStorage.setItem('app_login_icon_v15', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v13');
-    const localT = localStorage.getItem('app_trips_v13');
-    const localN = localStorage.getItem('app_notice_v13');
-    const localI = localStorage.getItem('app_login_icon_v13');
+    const localM = localStorage.getItem('app_members_v15');
+    const localT = localStorage.getItem('app_trips_v15');
+    const localN = localStorage.getItem('app_notice_v15');
+    const localI = localStorage.getItem('app_login_icon_v15');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -1908,7 +2054,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v13')
+      .channel('app-global-sync-v15')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -1917,19 +2063,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v13', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v15', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v13', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v15', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v13', p.content);
+              localStorage.setItem('app_notice_v15', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v13', p.content);
+              localStorage.setItem('app_login_icon_v15', p.content);
             }
           }
         }
@@ -1943,7 +2089,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v13', JSON.stringify(newM));
+    localStorage.setItem('app_members_v15', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -1955,14 +2101,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v13', JSON.stringify(next));
+    localStorage.setItem('app_trips_v15', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v13', JSON.stringify(next));
+    localStorage.setItem('app_trips_v15', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -1970,11 +2116,10 @@ export default function AppEntry() {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
     setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v13', JSON.stringify(next));
+    localStorage.setItem('app_trips_v15', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
-  // 💥 透過 6 碼旅行代碼加入行程
   const handleJoinTrip = async (code: string) => {
     if (!user) return;
     const target = selectedTrips.find(t => t.joinCode?.toUpperCase() === code);
@@ -1993,7 +2138,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v13', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v15', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2001,13 +2146,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v13', n);
+    localStorage.setItem('app_notice_v15', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v13', icon);
+    localStorage.setItem('app_login_icon_v15', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
