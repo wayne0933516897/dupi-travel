@@ -426,14 +426,14 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             type="text"
             value={loginAccountInput}
             onChange={(e) => setLoginAccountInput(e.target.value)}
-            placeholder="請輸入帳號 (英文/數字)..."
+            placeholder="請輸入帳號"
             className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
           <input
             type="password"
             value={loginPasswordInput}
             onChange={(e) => setLoginPasswordInput(e.target.value)}
-            placeholder="請輸入密碼..."
+            placeholder="請輸入密碼"
             className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
 
@@ -483,7 +483,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字，不可重複)</label>
             <input
               type="text"
-              placeholder="例如: wayne888, cat123"
+              placeholder="例如:cat123"
               value={regAccount}
               onChange={(e) => setRegAccount(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 font-mono"
@@ -491,10 +491,10 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，登入顯示，不可重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，，不可重複)</label>
             <input
               type="text"
-              placeholder="例如: 柴犬, 肚皮"
+              placeholder=""
               value={regName}
               onChange={(e) => setRegName(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
