@@ -10,7 +10,14 @@ const supabase = createClient(
 );
 
 // --- 型別定義 ---
-interface Member { id: string; name: string; avatar: string; loginCode: string; editLogs: string[]; }
+interface Member {
+  id: string;
+  account: string; // 英文/數字帳號（不重複）
+  name: string;    // 中文/英文暱稱（不重複）
+  avatar: string;
+  loginCode: string; // 密碼
+  editLogs: string[];
+}
 interface ExpenseRecord { id: number; category: string; amount: string; currency: 'JPY' | 'TWD' | 'CNY'; twdAmount: string; payMethod: string; payerId: string; date: string; note?: string; lastUpdatedById?: string; }
 interface Plan { id: number; time: string; title: string; desc: string; icon: string; lastUpdatedById?: string; }
 interface TodoItem { id: number; task: string; note?: string; assigneeIds: string[]; completedAssigneeIds: string[]; category: string; lastUpdatedById?: string; }
@@ -89,7 +96,7 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
-// 💥 互動式圖片調整與裁切元件 (支援手勢拖曳位置、縮放大小，並輸出高品質壓縮圖)
+// 互動式圖片調整與裁切元件
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -122,7 +129,7 @@ function ImageUploader({
       setOffset({ x: 0, y: 0 });
     };
     reader.readAsDataURL(file);
-    e.target.value = ''; // 清除以允許重複上傳相同檔案
+    e.target.value = '';
   };
 
   const handlePointerDown = (clientX: number, clientY: number) => {
@@ -152,8 +159,7 @@ function ImageUploader({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 依據目前容器座標反推圖片裁切區間
-    const boxSize = 260; // 裁切容器基準寬高
+    const boxSize = 260;
     const displayedWidth = img.clientWidth * zoom;
     const displayedHeight = img.clientHeight * zoom;
 
@@ -196,14 +202,12 @@ function ImageUploader({
       </button>
       <input type="file" ref={fileInput} onChange={handleFile} accept="image/*" className="hidden" />
 
-      {/* 互動式相片調整 Modal */}
       {croppingImage && (
         <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-[36px] p-6 max-w-sm w-full text-black font-black flex flex-col items-center animate-in zoom-in-95">
             <h4 className="text-base font-black mb-1">調整照片大小與位置</h4>
             <p className="text-[10px] text-gray-400 mb-4">用手指或滑鼠拖曳移動，使用滑桿放大縮小</p>
 
-            {/* 裁切視窗容器 */}
             <div 
               className="w-[260px] h-[260px] rounded-3xl overflow-hidden relative bg-gray-900 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
               onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
@@ -232,7 +236,6 @@ function ImageUploader({
               </div>
             </div>
 
-            {/* 縮放滑桿 */}
             <div className="w-full mt-5 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                 <span>小 (1.0x)</span>
@@ -273,19 +276,34 @@ function ImageUploader({
   );
 }
 
-// 1. 登錄與註冊頁面
+// 1. 登錄與註冊頁面（支援「記住我」、英文帳號限制、用戶名稱查重、強制密碼）
 function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   
+  // 記住我與登入狀態
   const [loginAccountInput, setLoginAccountInput] = useState('');
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
 
-  const [regName, setRegName] = useState('');
-  const [regCode, setRegCode] = useState('');
-  const [regConfirmCode, setRegConfirmCode] = useState('');
+  // 註冊表單狀態
+  const [regAccount, setRegAccount] = useState(''); // 英文/數字帳號
+  const [regName, setRegName] = useState('');       // 中文/英文名稱
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regAvatar, setRegAvatar] = useState(PRESET_ANIMAL_AVATARS[0]);
   const [captchaCode, setCaptchaCode] = useState(() => generateRandomCaptcha());
   const [captchaInput, setCaptchaInput] = useState('');
+
+  // 初始化讀取「記住我」
+  useEffect(() => {
+    const savedAcc = localStorage.getItem('remembered_account');
+    const savedPwd = localStorage.getItem('remembered_password');
+    if (savedAcc && savedPwd) {
+      setLoginAccountInput(savedAcc);
+      setLoginPasswordInput(savedPwd);
+      setRememberMe(true);
+    }
+  }, []);
 
   const refreshCaptcha = () => {
     setCaptchaCode(generateRandomCaptcha());
@@ -295,12 +313,21 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   const isImage = loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http'));
 
   const handleRegisterSubmit = () => {
+    const trimmedAccount = regAccount.trim().toLowerCase();
     const trimmedName = regName.trim();
-    const trimmedCode = regCode.trim();
+    const trimmedPassword = regPassword.trim();
+
+    if (!trimmedAccount) return alert("❌ 請填寫登入帳號！");
+    // 檢查帳號必須是英文字母或數字
+    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedAccount)) {
+      return alert("❌ 登入帳號必須是英文或數字（可含底線），不可包含中文或空格！");
+    }
 
     if (!trimmedName) return alert("❌ 請填寫用戶名稱！");
-    if (!trimmedCode) return alert("❌ 請填寫登入密碼！");
-    if (trimmedCode !== regConfirmCode.trim()) return alert("❌ 兩次密碼輸入不一致，請再次確認！");
+    if (!trimmedPassword) return alert("❌ 請填寫登入密碼！");
+    if (trimmedPassword !== regConfirmPassword.trim()) {
+      return alert("❌ 兩次密碼輸入不一致，請再次確認！");
+    }
 
     if (captchaInput.trim() !== captchaCode) {
       alert("❌ 驗證碼錯誤，請重新輸入！");
@@ -308,14 +335,21 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       return;
     }
 
+    // 查重：帳號不可重複
+    if (allMembers.some(m => (m.account || m.loginCode).toLowerCase() === trimmedAccount)) {
+      return alert("❌ 該英文帳號已被使用，請更換其他帳號！");
+    }
+
+    // 查重：用戶名稱不可重複
     if (allMembers.some(m => m.name.toLowerCase() === trimmedName.toLowerCase())) {
       return alert("❌ 該用戶名稱已被使用，請更換其他名稱！");
     }
 
     const newMember: Member = {
       id: Date.now().toString(),
+      account: trimmedAccount,
       name: trimmedName,
-      loginCode: trimmedCode,
+      loginCode: trimmedPassword,
       avatar: regAvatar,
       editLogs: [`Registered at ${new Date().toLocaleString()}`]
     };
@@ -323,27 +357,37 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     onRegister(newMember);
     alert(`🎉 註冊成功！歡迎 ${newMember.name}，現在請登入！`);
     setMode('login');
-    setLoginAccountInput(trimmedName);
-    setLoginPasswordInput(trimmedCode);
+    setLoginAccountInput(trimmedAccount);
+    setLoginPasswordInput(trimmedPassword);
   };
 
   const handleLoginSubmit = () => {
-    const acc = loginAccountInput.trim();
+    const acc = loginAccountInput.trim().toLowerCase();
     const pwd = loginPasswordInput.trim();
-    if (!acc) return alert("請輸入用戶名稱或登入代碼！");
 
-    let found = allMembers.find(m => m.name === acc && m.loginCode === pwd);
-    if (!found) {
-      found = allMembers.find(m => m.loginCode === acc);
-    }
-    if (!found && !pwd) {
-      found = allMembers.find(m => m.name === acc);
-    }
+    if (!acc) return alert("❌ 請輸入登入帳號！");
+    if (!pwd) return alert("❌ 請輸入密碼！");
+
+    // 支援比對 account 或以前舊資料的 loginCode/name
+    const found = allMembers.find(m => {
+      const matchAcc = (m.account && m.account.toLowerCase() === acc) || 
+                       (m.loginCode && m.loginCode.toLowerCase() === acc) ||
+                       (m.name && m.name.toLowerCase() === acc);
+      const matchPwd = m.loginCode === pwd;
+      return matchAcc && matchPwd;
+    });
 
     if (found) {
+      if (rememberMe) {
+        localStorage.setItem('remembered_account', acc);
+        localStorage.setItem('remembered_password', pwd);
+      } else {
+        localStorage.removeItem('remembered_account');
+        localStorage.removeItem('remembered_password');
+      }
       onLogin(found);
     } else {
-      alert("❌ 查無此帳號或密碼錯誤，請確認！");
+      alert("❌ 帳號或密碼錯誤，請重新檢查！");
     }
   };
 
@@ -382,16 +426,30 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             type="text"
             value={loginAccountInput}
             onChange={(e) => setLoginAccountInput(e.target.value)}
-            placeholder="請輸入用戶名稱 (或代碼)..."
-            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
+            placeholder="請輸入帳號 (英文/數字)..."
+            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
           <input
             type="password"
             value={loginPasswordInput}
             onChange={(e) => setLoginPasswordInput(e.target.value)}
-            placeholder="請輸入密碼 (若無可留空)..."
-            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-100 focus:border-[#86A760] transition-colors"
+            placeholder="請輸入密碼..."
+            className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
+
+          {/* 記住我選項 */}
+          <div className="flex items-center justify-between px-2 pt-1 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded accent-[#5E9E8E] cursor-pointer"
+              />
+              <span className="text-gray-600 font-black">記住我 (保留帳號密碼)</span>
+            </label>
+          </div>
+
           <button
             onClick={handleLoginSubmit}
             className="w-full py-4 bg-[#86A760] text-white rounded-[22px] font-black shadow-lg active:scale-95 transition-transform mt-2"
@@ -422,10 +480,21 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (不可與他人重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字，不可重複)</label>
             <input
               type="text"
-              placeholder="你的用戶名稱 (如: 柴犬)"
+              placeholder="例如: wayne888, cat123"
+              value={regAccount}
+              onChange={(e) => setRegAccount(e.target.value)}
+              className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，登入顯示，不可重複)</label>
+            <input
+              type="text"
+              placeholder="例如: 柴犬, 肚皮"
               value={regName}
               onChange={(e) => setRegName(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
@@ -433,12 +502,12 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">登入密碼 (可自由設定)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">登入密碼 (Password - 必填)</label>
             <input
               type="password"
-              placeholder="設定你的密碼 (可自選數字或字母)"
-              value={regCode}
-              onChange={(e) => setRegCode(e.target.value)}
+              placeholder="請輸入密碼"
+              value={regPassword}
+              onChange={(e) => setRegPassword(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
             />
           </div>
@@ -448,8 +517,8 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             <input
               type="password"
               placeholder="再次輸入密碼"
-              value={regConfirmCode}
-              onChange={(e) => setRegConfirmCode(e.target.value)}
+              value={regConfirmPassword}
+              onChange={(e) => setRegConfirmPassword(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
             />
           </div>
@@ -488,7 +557,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面
+// 2. 主畫面（個人資料編輯權限：一般人改名稱與密碼，Wayne 可改英文帳號且有查重）
 function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
@@ -511,19 +580,21 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
     joinCode: ''
   });
 
+  const isWayne = (user.account || user.loginCode) === 'wayne';
+
   const visibleTrips = useMemo(() => {
-    if (user.loginCode === 'wayne' && wayneViewAll) {
+    if (isWayne && wayneViewAll) {
       return allTrips;
     }
     return allTrips.filter(t => t.memberIds.includes(user.id));
-  }, [allTrips, user, wayneViewAll]);
+  }, [allTrips, user, isWayne, wayneViewAll]);
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
       {/* 頂部成員與選單 */}
       <div className="flex justify-between items-center mb-6 relative">
         <div className="font-black">
-          <p className="text-xs text-gray-400 uppercase tracking-widest">{user.loginCode === 'wayne' ? 'Admin Mode,' : 'User Mode,'}</p>
+          <p className="text-xs text-gray-400 uppercase tracking-widest">{isWayne ? 'Admin Mode,' : 'User Mode,'}</p>
           <h2 className="text-2xl text-black">{user.name}</h2>
         </div>
         
@@ -536,14 +607,14 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
             <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl p-2 z-50 border border-gray-100 font-black animate-in fade-in">
               <div className="p-3 border-b border-gray-50 mb-1">
                 <p className="text-xs text-black font-black truncate">{user.name}</p>
-                <p className="text-[10px] text-gray-400 font-mono">Code: {user.loginCode}</p>
+                <p className="text-[10px] text-gray-400 font-mono">帳號: {user.account || user.loginCode}</p>
               </div>
 
               <button onClick={() => { setShowUserDropdown(false); setEditingMember(user); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-blue-600 font-black">
-                👤 修改個人設定 (頭像/密碼)
+                👤 修改個人設定
               </button>
 
-              {user.loginCode === 'wayne' && (
+              {isWayne && (
                 <>
                   <button onClick={() => { setShowUserDropdown(false); setShowLoginIconModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-purple-600 font-black">
                     🖼️ 更換登入頁圖示
@@ -567,7 +638,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
           <span className="text-lg">📢</span>
           <p className="text-xs text-amber-900 truncate">{notice || '歡迎使用 Dupi Travel！祝旅途愉快～'}</p>
         </div>
-        {user.loginCode === 'wayne' && (
+        {isWayne && (
           <button onClick={() => {
             const nextNotice = prompt("修改首頁公告內容：", notice);
             if (nextNotice !== null) onUpdateNotice(nextNotice);
@@ -578,7 +649,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
       </div>
 
       {/* Wayne 專屬：查看全站行程開關 */}
-      {user.loginCode === 'wayne' && (
+      {isWayne && (
         <div className="mb-6 bg-white p-3.5 rounded-2xl border border-purple-100 flex justify-between items-center shadow-sm font-black">
           <div className="flex items-center gap-2">
             <span className="text-base">👑</span>
@@ -646,7 +717,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono font-black">成員：{trip.memberIds.length} 人</p>
               </div>
             </button>
-            {(user.loginCode === 'wayne' || trip.memberIds[0] === user.id) && (
+            {(isWayne || trip.memberIds[0] === user.id) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -771,23 +842,23 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 使用者管理名冊 */}
+      {/* 使用者管理名冊 (Wayne 專用，可編輯帳號與重置密碼) */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
             <div className="flex justify-between items-center mb-8 italic"><h3 className="text-xl">USER ADMIN (WAYNE ONLY)</h3><button onClick={()=>setShowUserAdmin(false)} className="text-gray-300">✕</button></div>
-            <button onClick={() => setEditingMember({id: Date.now().toString(), name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-3xl mb-8 text-gray-400 font-black">+ NEW USER</button>
+            <button onClick={() => setEditingMember({id: Date.now().toString(), account:'', name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-3xl mb-8 text-gray-400 font-black">+ NEW USER</button>
             <div className="space-y-4">
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
                   <div className="flex-1 font-black">
-                    {m.name}
-                    <p className="text-[9px] opacity-40 tracking-widest uppercase">Password: {m.loginCode}</p>
+                    <p className="text-sm font-black">{m.name}</p>
+                    <p className="text-[10px] text-gray-400 font-mono">帳號: {m.account || m.loginCode} | 密碼: {m.loginCode}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
-                    {m.loginCode !== 'wayne' && (
+                    {(m.account || m.loginCode) !== 'wayne' && (
                       <button 
                         onClick={() => {
                           if (confirm(`確定要徹底刪除用戶「${m.name}」嗎？\n（其過去記錄的記帳、日誌等資料仍會完整保留）`)) {
@@ -808,7 +879,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 個人設定彈窗 */}
+      {/* 個人設定彈窗（一般人只能改名稱與密碼，Wayne 可改英文帳號） */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -822,28 +893,59 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               </div>
               <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
+
+            {/* 帳號欄位：只有 Wayne (管理員) 可以修改，一般人鎖定唯讀 */}
+            <label className="text-[10px] text-gray-500 ml-2 font-black">
+              登入帳號 (Account) {isWayne ? '（管理員可修改，限英文數字）' : '（帳號固定不可變更）'}
+            </label>
+            <input 
+              placeholder="Account" 
+              value={editingMember.account || editingMember.loginCode} 
+              disabled={!isWayne}
+              onChange={e=>setEditingMember({...editingMember, account: e.target.value.toLowerCase()})} 
+              className={`w-full p-4 rounded-2xl mb-4 outline-none border font-black font-mono text-xs ${isWayne ? 'bg-gray-50 text-black border-gray-200' : 'bg-gray-100 text-gray-500 border-gray-100 cursor-not-allowed'}`} 
+            />
             
-            <label className="text-[10px] text-gray-500 ml-2 font-black">姓名 (用戶名稱)</label>
-            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
+            <label className="text-[10px] text-gray-500 ml-2 font-black">用戶名稱 (Name - 可中文，不可重複)</label>
+            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
             
-            <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Login Password)</label>
-            <input placeholder="Password" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
+            <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Password)</label>
+            <input placeholder="Password" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
             
             <div className="flex gap-4">
               <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
               <button onClick={()=>{
                 const trimmedName = editingMember.name.trim();
-                if (!trimmedName) return alert("請輸入姓名！");
+                if (!trimmedName) return alert("❌ 請輸入用戶名稱！");
                 
+                // 檢查用戶名稱有無重複
                 const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name.toLowerCase() === trimmedName.toLowerCase());
-                if (nameConflict) return alert("該用戶名稱已被他人使用，請更換！");
+                if (nameConflict) return alert("❌ 該用戶名稱已被他人使用，請更換！");
 
-                const trimmedCode = editingMember.loginCode.trim();
-                if (!trimmedCode) return alert("請輸入登入密碼！");
+                const targetAccount = (editingMember.account || editingMember.loginCode).trim().toLowerCase();
+                if (isWayne) {
+                  if (!targetAccount) return alert("❌ 帳號不可為空！");
+                  if (!/^[a-zA-Z0-9_-]+$/.test(targetAccount)) {
+                    return alert("❌ 帳號必須為英文或數字！");
+                  }
+                  // 檢查帳號有無重複
+                  const accountConflict = allMembers.some(m => m.id !== editingMember.id && (m.account || m.loginCode).toLowerCase() === targetAccount);
+                  if (accountConflict) return alert("❌ 該帳號已被他人使用，請更換！");
+                }
+
+                const trimmedPassword = editingMember.loginCode.trim();
+                if (!trimmedPassword) return alert("❌ 請輸入密碼！");
 
                 const timestamp = new Date().toLocaleString();
                 const newLogs = [...(editingMember.editLogs || []), `Modified at ${timestamp}`];
-                const finalMember = { ...editingMember, name: trimmedName, loginCode: trimmedCode, editLogs: newLogs };
+                const finalMember = { 
+                  ...editingMember, 
+                  account: targetAccount,
+                  name: trimmedName, 
+                  loginCode: trimmedPassword, 
+                  editLogs: newLogs 
+                };
+
                 const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
@@ -959,10 +1061,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' });
 
+  const isWayne = (user.account || user.loginCode) === 'wayne';
+
   const getMember = (id?: string) => {
-    if (!id) return { id: '', name: '未定', avatar: PRESET_ANIMAL_AVATARS[0], loginCode: '', editLogs: [] };
+    if (!id) return { id: '', account:'', name: '未定', avatar: PRESET_ANIMAL_AVATARS[0], loginCode: '', editLogs: [] };
     const found = allMembers.find(m => m.id === id);
-    return found || { id, name: '未知成員', avatar: PRESET_ANIMAL_AVATARS[0], loginCode: '', editLogs: [] };
+    return found || { id, account:'', name: '未知成員', avatar: PRESET_ANIMAL_AVATARS[0], loginCode: '', editLogs: [] };
   };
 
   useEffect(() => {
@@ -1399,8 +1503,8 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     <div className="flex justify-between mb-2">
                       <h4 className="text-xs italic bg-orange-50 px-3 py-1 rounded-full font-black">🎫 {b.title}</h4>
                       <div className="flex gap-2">
-                        <button onClick={()=>{const nt=prompt("憑證名稱:", b.title); if(nt){const n=bookings.map(i=>i.id===b.id?{...i, title:nt, lastUpdatedById: user.id}:i); setBookings(n); sync({bookings:n});}}} className="text-blue-400 text-xs">🖋️</button>
-                        <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs">✕</button>
+                        <button onClick={()=>{const nt=prompt("憑證名稱:", b.title); if(nt){const n=bookings.map(i=>i.id===b.id?{...i, title:nt, lastUpdatedById: user.id}:i); setBookings(n); sync({bookings:n});}}} className="text-blue-400 text-xs font-black">🖋️</button>
+                        <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs font-black">✕</button>
                       </div>
                     </div>
                     <p className="text-[9px] text-gray-400 mb-3 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
@@ -1609,7 +1713,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         <img src={getMember(r.payerId).avatar} className="w-8 h-8 rounded-full object-cover" />
                         <div>
                           <p className="text-xs font-black text-black">{r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span></p>
-                          {r.note && <p className="text-[10px] text-gray-600 font-normal">💬 {r.note}</p>}
+                          {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
                           <p className="text-[9px] text-gray-400 font-mono mt-0.5">{r.payMethod} · 付款人: {getMember(r.payerId).name}</p>
                         </div>
                       </div>
@@ -1760,7 +1864,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             </div>
 
             {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
-              const canEditThisMember = user.loginCode === 'wayne' || user.id === m.id;
+              const canEditThisMember = isWayne || user.id === m.id;
               const isTripLeader = tripData.memberIds[0] === m.id;
               return (
                 <div key={m.id} className="bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 border border-gray-100 font-black relative">
@@ -1770,10 +1874,11 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         <h4 className="text-lg text-black font-black">{m.name}</h4>
                         {isTripLeader && <span className="text-[9px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-black">開團者</span>}
                       </div>
-                      {user.loginCode === 'wayne' && (
-                        <div className="mt-3 space-y-1.5">
+                      <p className="text-[10px] text-gray-400 font-mono">帳號: {m.account || m.loginCode}</p>
+                      {isWayne && (
+                        <div className="mt-2 space-y-1">
                             <p className="text-[9px] text-gray-400 uppercase tracking-widest font-black">History Logs:</p>
-                            {(m.editLogs || []).slice(-3).reverse().map((log, i) => (
+                            {(m.editLogs || []).slice(-2).reverse().map((log, i) => (
                                 <p key={i} className="text-[9px] opacity-40 italic tracking-tighter font-black">· {log}</p>
                             ))}
                         </div>
@@ -1789,7 +1894,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         🖋️ 編輯
                       </button>
                     )}
-                    {(user.loginCode === 'wayne' || tripData.memberIds[0] === user.id) && m.id !== tripData.memberIds[0] && (
+                    {(isWayne || tripData.memberIds[0] === user.id) && m.id !== tripData.memberIds[0] && (
                       <button 
                         onClick={() => {
                           if (confirm(`確定將 ${m.name} 從此行程移除？其建立的記錄仍會完整保留。`)) {
@@ -1832,34 +1937,55 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               <ImageUploader label="上傳自訂頭像 (可縮放調整)" maxDimension={300} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
             </div>
 
-            <label className="text-[10px] text-gray-500 ml-2 font-black">姓名 (用戶名稱)</label>
-            <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
+            {/* 帳號欄位 */}
+            <label className="text-[10px] text-gray-500 ml-2 font-black">
+              登入帳號 (Account) {isWayne ? '（管理員可修改，限英文數字）' : '（帳號固定不可修改）'}
+            </label>
+            <input 
+              placeholder="Account" 
+              value={editingMemberModal.account || editingMemberModal.loginCode} 
+              disabled={!isWayne}
+              onChange={e=>setEditingMemberModal({...editingMemberModal, account: e.target.value.toLowerCase()})} 
+              className={`w-full p-4 rounded-2xl mb-4 outline-none border font-black font-mono text-xs ${isWayne ? 'bg-gray-50 text-black border-gray-200' : 'bg-gray-100 text-gray-500 border-gray-100 cursor-not-allowed'}`} 
+            />
+
+            <label className="text-[10px] text-gray-500 ml-2 font-black">用戶名稱 (Name - 可中文，不可重複)</label>
+            <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
             
-            {(user.loginCode === 'wayne' || user.id === editingMemberModal.id) && (
-              <>
-                <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Login Password)</label>
-                <input placeholder="Password" value={editingMemberModal.loginCode} onChange={e=>setEditingMemberModal({...editingMemberModal, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
-              </>
-            )}
+            <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Password)</label>
+            <input placeholder="Password" value={editingMemberModal.loginCode} onChange={e=>setEditingMemberModal({...editingMemberModal, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
             
             <div className="flex gap-4">
               <button onClick={()=>setEditingMemberModal(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">取消</button>
               <button onClick={()=>{
                 const trimmedName = editingMemberModal.name.trim();
-                if (!trimmedName) return alert("請輸入姓名！");
+                if (!trimmedName) return alert("❌ 請輸入用戶名稱！");
 
                 const nameConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.name.toLowerCase() === trimmedName.toLowerCase());
-                if (nameConflict) return alert("該用戶名稱已被使用，請更換名稱！");
+                if (nameConflict) return alert("❌ 該用戶名稱已被他人使用，請更換！");
 
-                if (user.loginCode === 'wayne' || user.id === editingMemberModal.id) {
-                  const trimmedCode = editingMemberModal.loginCode.trim();
-                  if (!trimmedCode) return alert("請輸入登入密碼！");
-                  editingMemberModal.loginCode = trimmedCode;
+                const targetAccount = (editingMemberModal.account || editingMemberModal.loginCode).trim().toLowerCase();
+                if (isWayne) {
+                  if (!targetAccount) return alert("❌ 帳號不可為空！");
+                  if (!/^[a-zA-Z0-9_-]+$/.test(targetAccount)) {
+                    return alert("❌ 帳號必須為英文或數字！");
+                  }
+                  const accountConflict = allMembers.some(m => m.id !== editingMemberModal.id && (m.account || m.loginCode).toLowerCase() === targetAccount);
+                  if (accountConflict) return alert("❌ 該帳號已被他人使用，請更換！");
                 }
+
+                const trimmedPassword = editingMemberModal.loginCode.trim();
+                if (!trimmedPassword) return alert("❌ 請輸入密碼！");
 
                 const timestamp = new Date().toLocaleString();
                 const newLogs = [...(editingMemberModal.editLogs || []), `${user.name} modified at ${timestamp}`];
-                const finalMember = { ...editingMemberModal, name: trimmedName, editLogs: newLogs };
+                const finalMember = { 
+                  ...editingMemberModal, 
+                  account: targetAccount,
+                  name: trimmedName, 
+                  loginCode: trimmedPassword, 
+                  editLogs: newLogs 
+                };
                 
                 const nextMembers = allMembers.map(m => m.id === finalMember.id ? finalMember : m);
 
@@ -1984,22 +2110,26 @@ export default function AppEntry() {
   const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
-    // 1. 同步成員
+    // 1. 同步成員（兼容舊資料補齊 account 欄位）
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
-      setAllMembers(mData.content);
-      localStorage.setItem('app_members_v15', JSON.stringify(mData.content));
+      const formatted = (mData.content as Member[]).map(m => ({
+        ...m,
+        account: m.account || m.loginCode || m.id
+      }));
+      setAllMembers(formatted);
+      localStorage.setItem('app_members_v16', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v15');
+      const cachedM = localStorage.getItem('app_members_v16');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
         const defaultM: Member[] = [
-          { id:'1', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
-          { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
+          { id:'1', account:'wayne', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
+          { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v15', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v16', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -2012,16 +2142,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v15', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v16', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v15');
+      const cachedT = localStorage.getItem('app_trips_v16');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v15', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v16', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -2030,22 +2160,22 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v15', nData.content);
+      localStorage.setItem('app_notice_v16', nData.content);
     }
 
     // 4. 同步登入頁圖示
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v15', iData.content);
+      localStorage.setItem('app_login_icon_v16', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v15');
-    const localT = localStorage.getItem('app_trips_v15');
-    const localN = localStorage.getItem('app_notice_v15');
-    const localI = localStorage.getItem('app_login_icon_v15');
+    const localM = localStorage.getItem('app_members_v16');
+    const localT = localStorage.getItem('app_trips_v16');
+    const localN = localStorage.getItem('app_notice_v16');
+    const localI = localStorage.getItem('app_login_icon_v16');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -2054,7 +2184,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v15')
+      .channel('app-global-sync-v16')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -2063,19 +2193,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v15', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v16', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v15', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v16', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v15', p.content);
+              localStorage.setItem('app_notice_v16', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v15', p.content);
+              localStorage.setItem('app_login_icon_v16', p.content);
             }
           }
         }
@@ -2089,7 +2219,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v15', JSON.stringify(newM));
+    localStorage.setItem('app_members_v16', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2101,14 +2231,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v15', JSON.stringify(next));
+    localStorage.setItem('app_trips_v16', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v15', JSON.stringify(next));
+    localStorage.setItem('app_trips_v16', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2116,7 +2246,7 @@ export default function AppEntry() {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
     setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v15', JSON.stringify(next));
+    localStorage.setItem('app_trips_v16', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2138,7 +2268,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v15', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v16', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2146,13 +2276,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v15', n);
+    localStorage.setItem('app_notice_v16', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v15', icon);
+    localStorage.setItem('app_login_icon_v16', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
