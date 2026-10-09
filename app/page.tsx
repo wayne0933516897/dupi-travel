@@ -105,7 +105,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
   );
 }
 
-// 2. 主畫面 (支援刪除用戶)
+// 2. 主畫面 (支援所有用戶在首頁自改 Code、頭像與名字)
 function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -141,11 +141,17 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
           </div>
 
           {showUserDropdown && (
-            <div className="absolute right-0 mt-3 w-48 bg-white rounded-2xl shadow-2xl p-2 z-50 border border-gray-100 font-black animate-in fade-in">
+            <div className="absolute right-0 mt-3 w-52 bg-white rounded-2xl shadow-2xl p-2 z-50 border border-gray-100 font-black animate-in fade-in">
               <div className="p-3 border-b border-gray-50 mb-1">
                 <p className="text-xs text-black font-black truncate">{user.name}</p>
                 <p className="text-[10px] text-gray-400 font-mono">Code: {user.loginCode}</p>
               </div>
+
+              {/* 💥 所有用戶皆可在此修改自己的個人資料與 Code */}
+              <button onClick={() => { setShowUserDropdown(false); setEditingMember(user); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-blue-600">
+                👤 修改個人設定 (Code/姓名)
+              </button>
+
               {user.loginCode === 'wayne' && (
                 <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2">
                   ⚙️ 成員管理名冊
@@ -271,9 +277,9 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
       )}
 
       {editingMember && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
-            <h3 className="text-center italic mb-8 uppercase">Setup User</h3>
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
+            <h3 className="text-center italic mb-8 uppercase text-xl">設定個人資料</h3>
             <div className="flex flex-col items-center gap-4 mb-4">
               <img src={editingMember.avatar || PRESET_ANIMAL_AVATARS[0]} className="w-24 h-24 rounded-full border-4 border-gray-100 object-cover shadow-md" />
               <div className="flex gap-2">
@@ -283,16 +289,18 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               </div>
               <ImageUploader label="上傳相片" onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
-            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100" />
+            <label className="text-[10px] text-gray-400 ml-2">姓名</label>
+            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
             
-            {/* 登入代碼修改 */}
-            <input placeholder="Login Code" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100" />
+            <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Login Code)</label>
+            <input placeholder="Login Code" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100 font-black" />
             
             <div className="flex gap-4">
-              <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl">Cancel</button>
+              <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
               <button onClick={()=>{
-                if (!editingMember.name.trim()) return alert("請輸入姓名！");
-                const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name === editingMember.name.trim());
+                const trimmedName = editingMember.name.trim();
+                if (!trimmedName) return alert("請輸入姓名！");
+                const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name === trimmedName);
                 if (nameConflict) return alert("該名字有人使用，請更換名字");
 
                 const trimmedCode = editingMember.loginCode.trim();
@@ -301,8 +309,8 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 if (codeConflict) return alert("該CODE有人使用，請更換CODE");
 
                 const timestamp = new Date().toLocaleString();
-                const newLogs = [...(editingMember.editLogs || []), `Updated by Admin at ${timestamp}`];
-                const finalMember = { ...editingMember, name: editingMember.name.trim(), loginCode: trimmedCode, editLogs: newLogs };
+                const newLogs = [...(editingMember.editLogs || []), `Modified at ${timestamp}`];
+                const finalMember = { ...editingMember, name: trimmedName, loginCode: trimmedCode, editLogs: newLogs };
                 const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
@@ -311,8 +319,9 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   onUpdateUser(finalMember);
                 }
 
+                alert("✅ 資料修改成功！");
                 setEditingMember(null);
-              }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic">Save</button>
+              }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Save</button>
             </div>
           </div>
         </div>
@@ -1291,7 +1300,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 💥 成員編輯 Modal (開放修改自己的 Code) */}
+      {/* 成員編輯 Modal */}
       {editingMemberModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1316,7 +1325,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             <label className="text-[10px] text-gray-400 ml-2">姓名</label>
             <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
             
-            {/* 💥 本人或管理員 Wayne 均可修改登入代碼 */}
             {(user.loginCode === 'wayne' || user.id === editingMemberModal.id) && (
               <>
                 <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Login Code)</label>
@@ -1354,6 +1362,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 }
 
                 sync({});
+                alert("✅ 修改成功！");
                 setEditingMemberModal(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">儲存成員</button>
             </div>
@@ -1417,7 +1426,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 <input placeholder="To (如: NRT)" value={flightForm.toCode} onChange={e=>setFlightForm({...flightForm, toCode:e.target.value})} className="p-4 bg-gray-50 rounded-2xl outline-none font-black" />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div grid-cols-2 gap-4>
                 <div><label className="text-[10px] ml-2 opacity-40">起飛時間 (Dep Time)</label><input type="time" value={flightForm.depTime} onChange={e=>setFlightForm({...flightForm, depTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
                 <div><label className="text-[10px] ml-2 opacity-40">抵達時間 (Arr Time)</label><input type="time" value={flightForm.arrTime} onChange={e=>setFlightForm({...flightForm, arrTime:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl outline-none font-black font-mono" /></div>
               </div>
@@ -1470,9 +1479,9 @@ export default function AppEntry() {
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v9', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v10', JSON.stringify(mData.content));
     } else {
-      const cachedM = localStorage.getItem('app_members_v9');
+      const cachedM = localStorage.getItem('app_members_v10');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -1481,7 +1490,7 @@ export default function AppEntry() {
           { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v9', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v10', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -1490,16 +1499,16 @@ export default function AppEntry() {
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       setSelectedTrips(tData.content);
-      localStorage.setItem('app_trips_v9', JSON.stringify(tData.content));
+      localStorage.setItem('app_trips_v10', JSON.stringify(tData.content));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v9');
+      const cachedT = localStorage.getItem('app_trips_v10');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v9', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v10', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -1508,14 +1517,14 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v9', nData.content);
+      localStorage.setItem('app_notice_v10', nData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v9');
-    const localT = localStorage.getItem('app_trips_v9');
-    const localN = localStorage.getItem('app_notice_v9');
+    const localM = localStorage.getItem('app_members_v10');
+    const localT = localStorage.getItem('app_trips_v10');
+    const localN = localStorage.getItem('app_notice_v10');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -1523,7 +1532,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v9')
+      .channel('app-global-sync-v10')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__)' },
@@ -1532,15 +1541,15 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v9', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v10', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v9', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v10', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v9', p.content);
+              localStorage.setItem('app_notice_v10', p.content);
             }
           }
         }
@@ -1554,21 +1563,21 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v9', JSON.stringify(newM));
+    localStorage.setItem('app_members_v10', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v9', JSON.stringify(next));
+    localStorage.setItem('app_trips_v10', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v9', JSON.stringify(next));
+    localStorage.setItem('app_trips_v10', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -1576,13 +1585,13 @@ export default function AppEntry() {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
     setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v9', JSON.stringify(next));
+    localStorage.setItem('app_trips_v10', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v9', n);
+    localStorage.setItem('app_notice_v10', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
