@@ -234,7 +234,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 💥 支援刪除用戶名冊功能 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -285,7 +284,10 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               <ImageUploader label="上傳相片" onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
             <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100" />
+            
+            {/* 登入代碼修改 */}
             <input placeholder="Login Code" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100" />
+            
             <div className="flex gap-4">
               <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl">Cancel</button>
               <button onClick={()=>{
@@ -293,12 +295,14 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name === editingMember.name.trim());
                 if (nameConflict) return alert("該名字有人使用，請更換名字");
 
-                const codeConflict = allMembers.some(m => m.id !== editingMember.id && m.loginCode === editingMember.loginCode.trim());
+                const trimmedCode = editingMember.loginCode.trim();
+                if (!trimmedCode) return alert("請輸入登入代碼！");
+                const codeConflict = allMembers.some(m => m.id !== editingMember.id && m.loginCode === trimmedCode);
                 if (codeConflict) return alert("該CODE有人使用，請更換CODE");
 
                 const timestamp = new Date().toLocaleString();
                 const newLogs = [...(editingMember.editLogs || []), `Updated by Admin at ${timestamp}`];
-                const finalMember = { ...editingMember, name: editingMember.name.trim(), loginCode: editingMember.loginCode.trim(), editLogs: newLogs };
+                const finalMember = { ...editingMember, name: editingMember.name.trim(), loginCode: trimmedCode, editLogs: newLogs };
                 const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
@@ -987,7 +991,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         const n = editingRecordId ? records.map(r=>r.id===editingRecordId?rec:r) : [rec, ...records]; 
                         setRecords(n); sync({records:n}); 
                         
-                        // 💥 記帳成功跳出提示訊息
                         alert(editingRecordId ? "✅ 記帳紀錄已更新！" : "✅ 記帳成功！");
 
                         setAmount(''); setCategory(''); setExpenseNote(''); setEditingRecordId(null);
@@ -1288,7 +1291,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 成員編輯 Modal */}
+      {/* 💥 成員編輯 Modal (開放修改自己的 Code) */}
       {editingMemberModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1313,9 +1316,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             <label className="text-[10px] text-gray-400 ml-2">姓名</label>
             <input placeholder="Name" value={editingMemberModal.name} onChange={e=>setEditingMemberModal({...editingMemberModal, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-100 font-black" />
             
-            {user.loginCode === 'wayne' && (
+            {/* 💥 本人或管理員 Wayne 均可修改登入代碼 */}
+            {(user.loginCode === 'wayne' || user.id === editingMemberModal.id) && (
               <>
-                <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Code)</label>
+                <label className="text-[10px] text-gray-400 ml-2">登入代碼 (Login Code)</label>
                 <input placeholder="Login Code" value={editingMemberModal.loginCode} onChange={e=>setEditingMemberModal({...editingMemberModal, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-100 font-black" />
               </>
             )}
@@ -1329,7 +1333,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 const nameConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.name === trimmedName);
                 if (nameConflict) return alert("該名字有人使用，請更換名字");
 
-                if (user.loginCode === 'wayne') {
+                if (user.loginCode === 'wayne' || user.id === editingMemberModal.id) {
                   const trimmedCode = editingMemberModal.loginCode.trim();
                   if (!trimmedCode) return alert("請輸入登入代碼！");
                   const codeConflict = allMembers.some(m => m.id !== editingMemberModal.id && m.loginCode === trimmedCode);
@@ -1466,9 +1470,9 @@ export default function AppEntry() {
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       setAllMembers(mData.content);
-      localStorage.setItem('app_members_v8', JSON.stringify(mData.content));
+      localStorage.setItem('app_members_v9', JSON.stringify(mData.content));
     } else {
-      const cachedM = localStorage.getItem('app_members_v8');
+      const cachedM = localStorage.getItem('app_members_v9');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -1477,7 +1481,7 @@ export default function AppEntry() {
           { id:'2', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v8', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v9', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -1486,16 +1490,16 @@ export default function AppEntry() {
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       setSelectedTrips(tData.content);
-      localStorage.setItem('app_trips_v8', JSON.stringify(tData.content));
+      localStorage.setItem('app_trips_v9', JSON.stringify(tData.content));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v8');
+      const cachedT = localStorage.getItem('app_trips_v9');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'] }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v8', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v9', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -1504,14 +1508,14 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v8', nData.content);
+      localStorage.setItem('app_notice_v9', nData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v8');
-    const localT = localStorage.getItem('app_trips_v8');
-    const localN = localStorage.getItem('app_notice_v8');
+    const localM = localStorage.getItem('app_members_v9');
+    const localT = localStorage.getItem('app_trips_v9');
+    const localN = localStorage.getItem('app_notice_v9');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -1519,7 +1523,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v8')
+      .channel('app-global-sync-v9')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__)' },
@@ -1528,15 +1532,15 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v8', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v9', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v8', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v9', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v8', p.content);
+              localStorage.setItem('app_notice_v9', p.content);
             }
           }
         }
@@ -1550,21 +1554,21 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v8', JSON.stringify(newM));
+    localStorage.setItem('app_members_v9', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v8', JSON.stringify(next));
+    localStorage.setItem('app_trips_v9', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v8', JSON.stringify(next));
+    localStorage.setItem('app_trips_v9', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -1572,13 +1576,13 @@ export default function AppEntry() {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
     setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v8', JSON.stringify(next));
+    localStorage.setItem('app_trips_v9', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v8', n);
+    localStorage.setItem('app_notice_v9', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
