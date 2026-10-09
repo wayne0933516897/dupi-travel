@@ -105,7 +105,7 @@ function LoginPage({ onLogin, allMembers }: { onLogin: (m: Member) => void, allM
   );
 }
 
-// 2. 主畫面
+// 2. 主畫面 (支援刪除用戶)
 function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -234,6 +234,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
+      {/* 💥 支援刪除用戶名冊功能 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -243,8 +244,26 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1 font-black">{m.name}<p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p></div>
-                  <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500">Edit</button>
+                  <div className="flex-1 font-black">
+                    {m.name}
+                    <p className="text-[9px] opacity-30 tracking-widest uppercase">Logs: {m.editLogs?.length || 0}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
+                    {m.loginCode !== 'wayne' && (
+                      <button 
+                        onClick={() => {
+                          if (confirm(`確定要徹底刪除用戶「${m.name}」嗎？\n（其過去記錄的記帳、日誌等資料仍會完整保留）`)) {
+                            const nextMembers = allMembers.filter(item => item.id !== m.id);
+                            onUpdateMembers(nextMembers);
+                          }
+                        }} 
+                        className="text-xs text-red-500 font-black ml-1"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -284,7 +303,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 const isNew = !allMembers.some(m=>m.id===finalMember.id);
                 onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
                 
-                // 💥 若修改的是當前登入者，同步首頁狀態
                 if (finalMember.id === user.id) {
                   onUpdateUser(finalMember);
                 }
@@ -849,7 +867,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 記帳] (送出完成提示) --- */}
+        {/* --- [Tab: 記帳] --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -969,7 +987,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         const n = editingRecordId ? records.map(r=>r.id===editingRecordId?rec:r) : [rec, ...records]; 
                         setRecords(n); sync({records:n}); 
                         
-                        // 💥 需求 2: 記帳完成跳出成功訊息
+                        // 💥 記帳成功跳出提示訊息
                         alert(editingRecordId ? "✅ 記帳紀錄已更新！" : "✅ 記帳成功！");
 
                         setAmount(''); setCategory(''); setExpenseNote(''); setEditingRecordId(null);
@@ -1270,7 +1288,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 成員編輯 Modal (連動更新主頁 User) */}
+      {/* 成員編輯 Modal */}
       {editingMemberModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1327,7 +1345,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
 
                 onUpdateMembers(nextMembers);
                 
-                // 💥 需求 1: 若修改的對象是當前登入者，同步主頁面 user 狀態
                 if (finalMember.id === user.id) {
                   onUpdateUser(finalMember);
                 }
@@ -1436,7 +1453,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   );
 }
 
-// 4. 入口點 (同步連動更新當前登入者資訊)
+// 4. 入口點
 export default function AppEntry() {
   const [user, setUser] = useState<Member | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
