@@ -12,10 +12,10 @@ const supabase = createClient(
 // --- 型別定義 ---
 interface Member {
   id: string;
-  account: string; // 英文/數字帳號（不重複）
-  name: string;    // 中文/英文暱稱（不重複）
+  account: string;
+  name: string;
   avatar: string;
-  loginCode: string; // 密碼
+  loginCode: string;
   editLogs: string[];
 }
 interface ExpenseRecord { id: number; category: string; amount: string; currency: 'JPY' | 'TWD' | 'CNY'; twdAmount: string; payMethod: string; payerId: string; date: string; note?: string; lastUpdatedById?: string; }
@@ -28,7 +28,6 @@ interface Trip { id: string; title: string; startDate: string; endDate: string; 
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
-// 可愛動物頭像清單
 const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Bear&backgroundColor=b6e3f4',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Panda&backgroundColor=c0aede',
@@ -37,6 +36,8 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Fox&backgroundColor=ffdfbf',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
+
+const PRESET_TRIP_ICONS = ['☃️', '❄️', '🗻', '✈️', '🌸', '⛩️', '🗼', '🌴', '🍜', '⛺', '🏖️', '🚗', '🎡', '🍱'];
 
 function generateJoinCode(existingTrips: Trip[]): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -276,25 +277,22 @@ function ImageUploader({
   );
 }
 
-// 1. 登錄與註冊頁面（支援「記住我」、英文帳號限制、用戶名稱查重、強制密碼）
+// 1. 登錄與註冊頁面
 function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   
-  // 記住我與登入狀態
   const [loginAccountInput, setLoginAccountInput] = useState('');
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
-  // 註冊表單狀態
-  const [regAccount, setRegAccount] = useState(''); // 英文/數字帳號
-  const [regName, setRegName] = useState('');       // 中文/英文名稱
+  const [regAccount, setRegAccount] = useState('');
+  const [regName, setRegName] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regAvatar, setRegAvatar] = useState(PRESET_ANIMAL_AVATARS[0]);
   const [captchaCode, setCaptchaCode] = useState(() => generateRandomCaptcha());
   const [captchaInput, setCaptchaInput] = useState('');
 
-  // 初始化讀取「記住我」
   useEffect(() => {
     const savedAcc = localStorage.getItem('remembered_account');
     const savedPwd = localStorage.getItem('remembered_password');
@@ -318,7 +316,6 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     const trimmedPassword = regPassword.trim();
 
     if (!trimmedAccount) return alert("❌ 請填寫登入帳號！");
-    // 檢查帳號必須是英文字母或數字
     if (!/^[a-zA-Z0-9_-]+$/.test(trimmedAccount)) {
       return alert("❌ 登入帳號必須是英文或數字（可含底線），不可包含中文或空格！");
     }
@@ -335,12 +332,10 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       return;
     }
 
-    // 查重：帳號不可重複
     if (allMembers.some(m => (m.account || m.loginCode).toLowerCase() === trimmedAccount)) {
       return alert("❌ 該英文帳號已被使用，請更換其他帳號！");
     }
 
-    // 查重：用戶名稱不可重複
     if (allMembers.some(m => m.name.toLowerCase() === trimmedName.toLowerCase())) {
       return alert("❌ 該用戶名稱已被使用，請更換其他名稱！");
     }
@@ -368,7 +363,6 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     if (!acc) return alert("❌ 請輸入登入帳號！");
     if (!pwd) return alert("❌ 請輸入密碼！");
 
-    // 支援比對 account 或以前舊資料的 loginCode/name
     const found = allMembers.find(m => {
       const matchAcc = (m.account && m.account.toLowerCase() === acc) || 
                        (m.loginCode && m.loginCode.toLowerCase() === acc) ||
@@ -426,18 +420,17 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             type="text"
             value={loginAccountInput}
             onChange={(e) => setLoginAccountInput(e.target.value)}
-            placeholder="請輸入帳號"
+            placeholder="請輸入帳號 (英文/數字)..."
             className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
           <input
             type="password"
             value={loginPasswordInput}
             onChange={(e) => setLoginPasswordInput(e.target.value)}
-            placeholder="請輸入密碼"
+            placeholder="請輸入密碼..."
             className="w-full p-4 bg-white rounded-[22px] font-black text-black placeholder:text-gray-400 outline-none shadow-sm border border-gray-200 focus:border-[#86A760] transition-colors"
           />
 
-          {/* 記住我選項 */}
           <div className="flex items-center justify-between px-2 pt-1 text-xs">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
@@ -483,7 +476,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字，不可重複)</label>
             <input
               type="text"
-              placeholder="例如:cat123"
+              placeholder="例如: wayne888, cat123"
               value={regAccount}
               onChange={(e) => setRegAccount(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 font-mono"
@@ -491,10 +484,10 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，，不可重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，登入顯示，不可重複)</label>
             <input
               type="text"
-              placeholder=""
+              placeholder="例如: 柴犬, 肚皮"
               value={regName}
               onChange={(e) => setRegName(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200"
@@ -557,8 +550,8 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面（個人資料編輯權限：一般人改名稱與密碼，Wayne 可改英文帳號且有查重）
-function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
+// 2. 主畫面（支援發起人/Wayne 自訂與更換行程圖示/照片）
+function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, onUpdateTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, onUpdateTrip: (t: Trip) => void, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
@@ -566,6 +559,9 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showLoginIconModal, setShowLoginIconModal] = useState(false);
+
+  // 💥 編輯行程圖示彈窗狀態
+  const [editingTripIconTarget, setEditingTripIconTarget] = useState<Trip | null>(null);
 
   const [wayneViewAll, setWayneViewAll] = useState(false);
 
@@ -702,35 +698,122 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
             點擊上方「+ NEW TRIP」建立行程，或「➕ 加入旅行」輸入好友的 6 碼代碼！
           </div>
         )}
-        {visibleTrips.map(trip => (
-          <div key={trip.id} className="relative font-black">
-            <button onClick={() => onSelect(trip)} className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-95 transition-all">
-              <div className="w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0">{trip.emoji}</div>
-              <div className="flex-1 overflow-hidden">
-                <div className="flex items-center gap-2">
-                  <h4 className="text-lg text-black truncate font-black">{trip.title}</h4>
-                  <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black">
-                    代碼: {trip.joinCode}
-                  </span>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter font-black">{trip.startDate} ~ {trip.endDate}</p>
-                <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono font-black">成員：{trip.memberIds.length} 人</p>
-              </div>
-            </button>
-            {(isWayne || trip.memberIds[0] === user.id) && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if(confirm(`確定刪除旅行「${trip.title}」？此操作無法復原。`)) onDeleteTrip(trip.id);
-                }}
-                className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full text-xs shadow-lg font-black flex items-center justify-center hover:bg-red-600"
+        {visibleTrips.map(trip => {
+          const canEditThisTrip = isWayne || trip.memberIds[0] === user.id;
+          const isIconImage = trip.emoji && (trip.emoji.startsWith('data:image') || trip.emoji.startsWith('http'));
+
+          return (
+            <div key={trip.id} className="relative font-black">
+              <div 
+                onClick={() => onSelect(trip)} 
+                className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-98 transition-all cursor-pointer"
               >
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
+                {/* 💥 行程圖示展示區（具有權限者可點擊換圖） */}
+                <div 
+                  onClick={(e) => {
+                    if (canEditThisTrip) {
+                      e.stopPropagation();
+                      setEditingTripIconTarget(trip);
+                    }
+                  }}
+                  title={canEditThisTrip ? "點擊更換旅行圖示" : undefined}
+                  className={`w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0 overflow-hidden relative shadow-inner ${canEditThisTrip ? 'hover:ring-2 hover:ring-[#5E9E8E] group cursor-pointer' : ''}`}
+                >
+                  {isIconImage ? (
+                    <img src={trip.emoji} alt="Trip Icon" className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{trip.emoji || '☃️'}</span>
+                  )}
+                  {canEditThisTrip && (
+                    <div className="absolute inset-0 bg-black/30 opacity-0 hover:opacity-100 flex items-center justify-center text-xs text-white transition-opacity">
+                      🖋️
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-hidden">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-lg text-black truncate font-black">{trip.title}</h4>
+                    <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black">
+                      代碼: {trip.joinCode}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter font-black">{trip.startDate} ~ {trip.endDate}</p>
+                  <p className="text-[9px] text-[#5E9E8E] mt-1 font-mono font-black">成員：{trip.memberIds.length} 人</p>
+                </div>
+              </div>
+
+              {canEditThisTrip && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if(confirm(`確定刪除旅行「${trip.title}」？此操作無法復原。`)) onDeleteTrip(trip.id);
+                  }}
+                  className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full text-xs shadow-lg font-black flex items-center justify-center hover:bg-red-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      {/* 💥 行程圖示更換 Modal (開團者或 Wayne 可用) */}
+      {editingTripIconTarget && (
+        <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
+            <h3 className="text-center italic mb-2 uppercase text-lg">更換旅行專屬圖示</h3>
+            <p className="text-xs text-gray-400 text-center mb-6">可挑選旅遊 Emoji，或上傳自訂照片裁切</p>
+
+            <div className="flex flex-col items-center gap-4 mb-6">
+              <div className="w-20 h-20 bg-[#F2F1EB] rounded-[28px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-[#5E9E8E]">
+                {editingTripIconTarget.emoji && (editingTripIconTarget.emoji.startsWith('data:image') || editingTripIconTarget.emoji.startsWith('http')) ? (
+                  <img src={editingTripIconTarget.emoji} className="w-full h-full object-cover" alt="trip icon preview" />
+                ) : (
+                  <span>{editingTripIconTarget.emoji || '☃️'}</span>
+                )}
+              </div>
+              <ImageUploader 
+                label="上傳自訂相片圖示" 
+                maxDimension={300} 
+                onUpload={(b64) => {
+                  const updated = { ...editingTripIconTarget, emoji: b64 };
+                  setEditingTripIconTarget(updated);
+                  onUpdateTrip(updated);
+                }} 
+              />
+            </div>
+
+            <p className="text-[10px] text-gray-500 mb-2 ml-1">常用推薦旅行圖示：</p>
+            <div className="grid grid-cols-7 gap-2 mb-6">
+              {PRESET_TRIP_ICONS.map((icon) => (
+                <button
+                  key={icon}
+                  onClick={() => {
+                    const updated = { ...editingTripIconTarget, emoji: icon };
+                    setEditingTripIconTarget(updated);
+                    onUpdateTrip(updated);
+                  }}
+                  className={`py-2 rounded-xl text-xl flex items-center justify-center transition-all ${editingTripIconTarget.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md scale-110' : 'bg-gray-100 hover:bg-gray-200'}`}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                alert("✅ 旅行圖示已更新！");
+                setEditingTripIconTarget(null);
+              }}
+              className="w-full py-4 bg-[#86A760] text-white rounded-3xl font-black text-sm shadow-md"
+            >
+              完成設定
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 輸入旅行代碼加入彈窗 */}
       {showJoinTripModal && (
@@ -768,7 +851,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 建立新行程彈窗 */}
+      {/* 建立新行程彈窗 (支援挑選初始圖示) */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -776,6 +859,34 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 text-center">
                <p className="text-[10px] text-emerald-700 font-black">自動生成專屬旅行代碼（旅伴輸入即可加入）</p>
                <p className="text-2xl font-mono text-emerald-900 font-black tracking-widest mt-0.5">{newTrip.joinCode}</p>
+             </div>
+
+             <div className="mb-4">
+               <label className="text-[10px] text-gray-500 ml-1 font-black">旅行專屬圖示</label>
+               <div className="flex gap-2 items-center mt-1">
+                 <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl shrink-0 overflow-hidden border border-gray-200">
+                   {newTrip.emoji && (newTrip.emoji.startsWith('data:image') || newTrip.emoji.startsWith('http')) ? (
+                     <img src={newTrip.emoji} className="w-full h-full object-cover" />
+                   ) : (
+                     <span>{newTrip.emoji || '☃️'}</span>
+                   )}
+                 </div>
+                 <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
+                   {PRESET_TRIP_ICONS.slice(0, 7).map((icon) => (
+                     <button
+                       key={icon}
+                       type="button"
+                       onClick={() => setNewTrip({ ...newTrip, emoji: icon })}
+                       className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all ${newTrip.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-50'}`}
+                     >
+                       {icon}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+               <div className="mt-2">
+                 <ImageUploader label="上傳自訂照片為行程封面" maxDimension={300} onUpload={(b64) => setNewTrip({ ...newTrip, emoji: b64 })} />
+               </div>
              </div>
 
              <input placeholder="Trip Title (e.g. 2026 東京行)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
@@ -842,7 +953,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 使用者管理名冊 (Wayne 專用，可編輯帳號與重置密碼) */}
+      {/* 使用者管理名冊 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
@@ -879,7 +990,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 個人設定彈窗（一般人只能改名稱與密碼，Wayne 可改英文帳號） */}
+      {/* 個人設定彈窗 */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -894,7 +1005,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
             </div>
 
-            {/* 帳號欄位：只有 Wayne (管理員) 可以修改，一般人鎖定唯讀 */}
             <label className="text-[10px] text-gray-500 ml-2 font-black">
               登入帳號 (Account) {isWayne ? '（管理員可修改，限英文數字）' : '（帳號固定不可變更）'}
             </label>
@@ -917,8 +1027,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
               <button onClick={()=>{
                 const trimmedName = editingMember.name.trim();
                 if (!trimmedName) return alert("❌ 請輸入用戶名稱！");
-                
-                // 檢查用戶名稱有無重複
+
                 const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name.toLowerCase() === trimmedName.toLowerCase());
                 if (nameConflict) return alert("❌ 該用戶名稱已被他人使用，請更換！");
 
@@ -928,7 +1037,6 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   if (!/^[a-zA-Z0-9_-]+$/.test(targetAccount)) {
                     return alert("❌ 帳號必須為英文或數字！");
                   }
-                  // 檢查帳號有無重複
                   const accountConflict = allMembers.some(m => m.id !== editingMember.id && (m.account || m.loginCode).toLowerCase() === targetAccount);
                   if (accountConflict) return alert("❌ 該帳號已被他人使用，請更換！");
                 }
@@ -945,10 +1053,10 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                   loginCode: trimmedPassword, 
                   editLogs: newLogs 
                 };
+                
+                const nextMembers = allMembers.map(m => m.id === finalMember.id ? finalMember : m);
 
-                const up = allMembers.map(m=>m.id===finalMember.id ? finalMember : m);
-                const isNew = !allMembers.some(m=>m.id===finalMember.id);
-                onUpdateMembers(isNew ? [...allMembers, finalMember] : up); 
+                onUpdateMembers(nextMembers);
                 
                 if (finalMember.id === user.id) {
                   onUpdateUser(finalMember);
@@ -1860,7 +1968,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             </div>
 
             <div className="flex justify-between items-center mt-6 mb-2">
-              <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black tracking-widest">Trip Members ({currentMemberIds.length})</h3>
+              <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Trip Members ({currentMemberIds.length})</h3>
             </div>
 
             {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
@@ -1937,7 +2045,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               <ImageUploader label="上傳自訂頭像 (可縮放調整)" maxDimension={300} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
             </div>
 
-            {/* 帳號欄位 */}
             <label className="text-[10px] text-gray-500 ml-2 font-black">
               登入帳號 (Account) {isWayne ? '（管理員可修改，限英文數字）' : '（帳號固定不可修改）'}
             </label>
@@ -2110,7 +2217,6 @@ export default function AppEntry() {
   const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
-    // 1. 同步成員（兼容舊資料補齊 account 欄位）
     const { data: mData } = await supabase.from('trips').select('content').eq('id', '__app_members__').single();
     if (mData?.content && Array.isArray(mData.content)) {
       const formatted = (mData.content as Member[]).map(m => ({
@@ -2118,9 +2224,9 @@ export default function AppEntry() {
         account: m.account || m.loginCode || m.id
       }));
       setAllMembers(formatted);
-      localStorage.setItem('app_members_v16', JSON.stringify(formatted));
+      localStorage.setItem('app_members_v17', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v16');
+      const cachedM = localStorage.getItem('app_members_v17');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -2129,12 +2235,11 @@ export default function AppEntry() {
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v16', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v17', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
 
-    // 2. 同步行程
     const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       const ensuredTrips = (tData.content as Trip[]).map(t => ({
@@ -2142,40 +2247,38 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v16', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v17', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v16');
+      const cachedT = localStorage.getItem('app_trips_v17');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v16', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v17', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
 
-    // 3. 同步公告
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v16', nData.content);
+      localStorage.setItem('app_notice_v17', nData.content);
     }
 
-    // 4. 同步登入頁圖示
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v16', iData.content);
+      localStorage.setItem('app_login_icon_v17', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v16');
-    const localT = localStorage.getItem('app_trips_v16');
-    const localN = localStorage.getItem('app_notice_v16');
-    const localI = localStorage.getItem('app_login_icon_v16');
+    const localM = localStorage.getItem('app_members_v17');
+    const localT = localStorage.getItem('app_trips_v17');
+    const localN = localStorage.getItem('app_notice_v17');
+    const localI = localStorage.getItem('app_login_icon_v17');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -2184,7 +2287,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v16')
+      .channel('app-global-sync-v17')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -2193,19 +2296,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v16', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v17', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v16', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v17', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v16', p.content);
+              localStorage.setItem('app_notice_v17', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v16', p.content);
+              localStorage.setItem('app_login_icon_v17', p.content);
             }
           }
         }
@@ -2219,7 +2322,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v16', JSON.stringify(newM));
+    localStorage.setItem('app_members_v17', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2231,22 +2334,24 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v16', JSON.stringify(next));
+    localStorage.setItem('app_trips_v17', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v16', JSON.stringify(next));
+    localStorage.setItem('app_trips_v17', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleUpdateTrip = async (updated: Trip) => {
     const next = selectedTrips.map(t => t.id === updated.id ? updated : t);
     setSelectedTrips(next);
-    setSelectedTrip(updated);
-    localStorage.setItem('app_trips_v16', JSON.stringify(next));
+    if (selectedTrip && selectedTrip.id === updated.id) {
+      setSelectedTrip(updated);
+    }
+    localStorage.setItem('app_trips_v17', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2268,7 +2373,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v16', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v17', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2276,13 +2381,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v16', n);
+    localStorage.setItem('app_notice_v17', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v16', icon);
+    localStorage.setItem('app_login_icon_v17', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
@@ -2313,6 +2418,7 @@ export default function AppEntry() {
       onSelect={setSelectedTrip} 
       onAddTrip={handleAddTrip} 
       onDeleteTrip={handleDeleteTrip} 
+      onUpdateTrip={handleUpdateTrip}
       onUpdateMembers={handleUpdateMembers} 
       onUpdateUser={setUser}
       notice={notice}
