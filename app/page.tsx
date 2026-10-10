@@ -21,7 +21,27 @@ interface Member {
 interface ExpenseRecord { id: number; category: string; amount: string; currency: 'JPY' | 'TWD' | 'CNY'; twdAmount: string; payMethod: string; payerId: string; date: string; note?: string; lastUpdatedById?: string; }
 interface Plan { id: number; time: string; title: string; desc: string; icon: string; lastUpdatedById?: string; }
 interface TodoItem { id: number; task: string; note?: string; assigneeIds: string[]; completedAssigneeIds: string[]; category: string; lastUpdatedById?: string; }
-interface JournalEntry { id: number; authorId: string; content: string; date: string; image?: string; lastUpdatedById?: string; }
+
+// 💥 日誌留言型別定義
+interface JournalComment {
+  id: number;
+  authorId: string;
+  content: string;
+  date: string;
+}
+
+// 💥 日誌型別（擴充按讚 likes 與留言 comments）
+interface JournalEntry { 
+  id: number; 
+  authorId: string; 
+  content: string; 
+  date: string; 
+  image?: string; 
+  lastUpdatedById?: string;
+  likes?: string[]; // 存放按讚成員的 id 清單
+  comments?: JournalComment[]; // 存放留言清單
+}
+
 interface Flight { id: number; airline: string; flightNo: string; fromCode: string; toCode: string; depTime: string; arrTime: string; duration: string; date: string; baggage: string; aircraft: string; lastUpdatedById?: string; }
 interface BookingDoc { id: number; type: string; title: string; image?: string; lastUpdatedById?: string; }
 interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; memberIds: string[]; joinCode: string; }
@@ -547,7 +567,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面（支援 onUpdateTrip 與 onUpdateTripWithMigration）
+// 2. 主畫面
 function TripSelector({ 
   user, 
   onLogout, 
@@ -1213,7 +1233,7 @@ function TripSelector({
   );
 }
 
-// 3. 主程式元件
+// 3. 主程式元件（💥 整合日誌按讚與留言串功能）
 function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
@@ -1236,6 +1256,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [flights, setFlights] = useState<Flight[]>([]);
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
   const [cityConfigs, setCityConfigs] = useState<CityWeatherConfig[]>([]);
+
+  // 💥 留言狀態：記錄每篇展開的留言串以及輸入框文字
+  const [expandedComments, setExpandedComments] = useState<{ [journalId: number]: boolean }>({});
+  const [commentInputs, setCommentInputs] = useState<{ [journalId: number]: string }>({});
 
   const stateRef = useRef({
     records,
@@ -1512,6 +1536,58 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     if (filterPayerIds.length === 0) return records;
     return records.filter(r => filterPayerIds.includes(r.payerId));
   }, [records, filterPayerIds]);
+
+  // 💥 按讚切換邏輯
+  const handleToggleLike = (journalId: number) => {
+    const nextJournals = journals.map(j => {
+      if (j.id !== journalId) return j;
+      const currentLikes = j.likes || [];
+      const hasLiked = currentLikes.includes(user.id);
+      const updatedLikes = hasLiked
+        ? currentLikes.filter(id => id !== user.id)
+        : [...currentLikes, user.id];
+      return { ...j, likes: updatedLikes };
+    });
+    setJournals(nextJournals);
+    sync({ journals: nextJournals });
+  };
+
+  // 💥 新增留言邏輯
+  const handleAddComment = (journalId: number) => {
+    const text = (commentInputs[journalId] || '').trim();
+    if (!text) return alert("請輸入留言內容！");
+
+    const newComment: JournalComment = {
+      id: Date.now(),
+      authorId: user.id,
+      content: text,
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const nextJournals = journals.map(j => {
+      if (j.id !== journalId) return j;
+      const existingComments = j.comments || [];
+      return { ...j, comments: [...existingComments, newComment] };
+    });
+
+    setJournals(nextJournals);
+    sync({ journals: nextJournals });
+    setCommentInputs({ ...commentInputs, [journalId]: '' });
+  };
+
+  // 💥 刪除留言邏輯 (本人或 Wayne 可刪)
+  const handleDeleteComment = (journalId: number, commentId: number) => {
+    if (!confirm("確定要刪除此留言嗎？")) return;
+    const nextJournals = journals.map(j => {
+      if (j.id !== journalId) return j;
+      return {
+        ...j,
+        comments: (j.comments || []).filter(c => c.id !== commentId)
+      };
+    });
+    setJournals(nextJournals);
+    sync({ journals: nextJournals });
+  };
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] font-sans pb-32 text-black font-black">
@@ -1981,7 +2057,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 日誌] --- */}
+        {/* --- [Tab: 日誌]（💥 完整整合：按讚 ❤️ 與留言串 💬） --- */}
         {activeTab === '日誌' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
@@ -2019,18 +2095,39 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     />
                     <button onClick={()=>{
                         if(!newJournal.content.trim()) return alert("請輸入日誌內容！");
-                        const n: JournalEntry[] = [{id:Date.now(), authorId:user.id, content:newJournal.content.trim(), image:newJournal.image, date:new Date().toLocaleString(), lastUpdatedById: user.id}, ...journals];
+                        const n: JournalEntry[] = [{
+                          id: Date.now(), 
+                          authorId: user.id, 
+                          content: newJournal.content.trim(), 
+                          image: newJournal.image, 
+                          date: new Date().toLocaleString(), 
+                          lastUpdatedById: user.id,
+                          likes: [],
+                          comments: []
+                        }, ...journals];
                         setJournals(n); sync({journals:n}); setNewJournal({content:'', image:''});
                     }} className="bg-[#86A760] text-white px-8 py-3 rounded-2xl shadow-lg italic font-black">Share</button>
                 </div>
             </div>
+
             <div className="space-y-6">
-              {journals.map(j => (
+              {journals.map(j => {
+                const likes = j.likes || [];
+                const comments = j.comments || [];
+                const hasLiked = likes.includes(user.id);
+                const isCommentsOpen = !!expandedComments[j.id];
+
+                return (
                   <div key={j.id} className="bg-white p-6 rounded-[32px] shadow-md border border-gray-100 animate-in slide-in-from-bottom-2 relative font-black">
                       <div className="absolute top-6 right-6 flex gap-3">
-                        <button onClick={()=>{const nt=prompt("編輯日誌內容:", j.content); if(nt){const n=journals.map(i=>i.id===j.id?{...i, content:nt, lastUpdatedById: user.id}:i); setJournals(n); sync({journals:n});}}} className="text-blue-400 text-xs">🖋️</button>
-                        <button onClick={()=>{if(confirm('確定刪除此日誌？')){const n=journals.filter(i=>i.id!==j.id); setJournals(n); sync({journals:n});}}} className="text-red-300 text-xs">🗑️</button>
+                        {(j.authorId === user.id || isWayne) && (
+                          <>
+                            <button onClick={()=>{const nt=prompt("編輯日誌內容:", j.content); if(nt){const n=journals.map(i=>i.id===j.id?{...i, content:nt, lastUpdatedById: user.id}:i); setJournals(n); sync({journals:n});}}} className="text-blue-400 text-xs">🖋️</button>
+                            <button onClick={()=>{if(confirm('確定刪除此日誌？')){const n=journals.filter(i=>i.id!==j.id); setJournals(n); sync({journals:n});}}} className="text-red-300 text-xs">🗑️</button>
+                          </>
+                        )}
                       </div>
+
                       <div className="flex items-center gap-3 mb-4">
                           <img src={getMember(j.authorId).avatar} className="w-10 h-10 rounded-full border border-gray-100 object-cover" />
                           <div>
@@ -2038,6 +2135,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             <p className="text-[9px] text-gray-400 italic font-mono uppercase tracking-widest">{j.date} · 最後編輯: {getMember(j.lastUpdatedById).name}</p>
                           </div>
                       </div>
+
                       <p className="text-sm mb-4 leading-relaxed font-black text-gray-800">{j.content}</p>
                       
                       {j.image && (
@@ -2049,8 +2147,95 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           />
                         </div>
                       )}
+
+                      {/* 💥 互動工具列：按讚 ❤️ 與 留言按鈕 💬 */}
+                      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-50">
+                        {/* 愛心按讚按鈕 */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLike(j.id)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-90 ${hasLiked ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                        >
+                          <span className="text-sm">{hasLiked ? '❤️' : '🤍'}</span>
+                          <span>{likes.length > 0 ? likes.length : '讚'}</span>
+                        </button>
+
+                        {/* 留言展開按鈕 */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedComments({ ...expandedComments, [j.id]: !isCommentsOpen })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all ${isCommentsOpen ? 'bg-[#5E9E8E] text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                        >
+                          <span className="text-sm">💬</span>
+                          <span>{comments.length > 0 ? `${comments.length} 則留言` : '留言'}</span>
+                        </button>
+                      </div>
+
+                      {/* 💥 展開的留言串區塊 */}
+                      {isCommentsOpen && (
+                        <div className="mt-4 pt-3 border-t border-dashed border-gray-100 space-y-3 animate-in fade-in">
+                          {/* 留言清單 */}
+                          {comments.length === 0 ? (
+                            <p className="text-[10px] text-gray-300 italic py-1">目前尚無留言，來搶頭香吧～</p>
+                          ) : (
+                            <div className="space-y-2.5">
+                              {comments.map(c => {
+                                const cAuthor = getMember(c.authorId);
+                                const canDeleteComment = c.authorId === user.id || isWayne;
+                                return (
+                                  <div key={c.id} className="flex items-start gap-2.5 bg-gray-50 p-3 rounded-2xl">
+                                    <img src={cAuthor.avatar} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-black text-black">{cAuthor.name}</span>
+                                        <span className="text-[9px] text-gray-300 font-mono">{c.date}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-700 mt-0.5 leading-relaxed font-normal">{c.content}</p>
+                                    </div>
+                                    {canDeleteComment && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteComment(j.id, c.id)}
+                                        className="text-[10px] text-gray-300 hover:text-red-500 ml-1"
+                                        title="刪除留言"
+                                      >
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* 留言輸入發布框 */}
+                          <div className="flex gap-2 items-center pt-2">
+                            <input
+                              type="text"
+                              value={commentInputs[j.id] || ''}
+                              onChange={(e) => setCommentInputs({ ...commentInputs, [j.id]: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddComment(j.id);
+                                }
+                              }}
+                              placeholder="輸入留言..."
+                              className="flex-1 p-2.5 px-4 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddComment(j.id)}
+                              className="px-4 py-2.5 bg-[#5E9E8E] text-white rounded-2xl text-xs font-black shadow-sm active:scale-95 transition-transform"
+                            >
+                              送出
+                            </button>
+                          </div>
+                        </div>
+                      )}
                   </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -2149,7 +2334,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             </div>
 
             <div className="flex justify-between items-center mt-6 mb-2">
-              <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black tracking-widest">Trip Members ({currentMemberIds.length})</h3>
+              <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Trip Members ({currentMemberIds.length})</h3>
             </div>
 
             {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
@@ -2405,9 +2590,9 @@ export default function AppEntry() {
         account: m.account || m.loginCode || m.id
       }));
       setAllMembers(formatted);
-      localStorage.setItem('app_members_v19', JSON.stringify(formatted));
+      localStorage.setItem('app_members_v20', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v19');
+      const cachedM = localStorage.getItem('app_members_v20');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -2416,7 +2601,7 @@ export default function AppEntry() {
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v19', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v20', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -2428,16 +2613,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v19', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v20', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v19');
+      const cachedT = localStorage.getItem('app_trips_v20');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v19', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v20', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -2445,21 +2630,21 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v19', nData.content);
+      localStorage.setItem('app_notice_v20', nData.content);
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v19', iData.content);
+      localStorage.setItem('app_login_icon_v20', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v19');
-    const localT = localStorage.getItem('app_trips_v19');
-    const localN = localStorage.getItem('app_notice_v19');
-    const localI = localStorage.getItem('app_login_icon_v19');
+    const localM = localStorage.getItem('app_members_v20');
+    const localT = localStorage.getItem('app_trips_v20');
+    const localN = localStorage.getItem('app_notice_v20');
+    const localI = localStorage.getItem('app_login_icon_v20');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -2468,7 +2653,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v19')
+      .channel('app-global-sync-v20')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -2477,19 +2662,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v19', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v20', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v19', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v20', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v19', p.content);
+              localStorage.setItem('app_notice_v20', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v19', p.content);
+              localStorage.setItem('app_login_icon_v20', p.content);
             }
           }
         }
@@ -2503,7 +2688,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v19', JSON.stringify(newM));
+    localStorage.setItem('app_members_v20', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2515,14 +2700,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v19', JSON.stringify(next));
+    localStorage.setItem('app_trips_v20', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v19', JSON.stringify(next));
+    localStorage.setItem('app_trips_v20', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2532,7 +2717,7 @@ export default function AppEntry() {
     if (selectedTrip && selectedTrip.id === updated.id) {
       setSelectedTrip(updated);
     }
-    localStorage.setItem('app_trips_v19', JSON.stringify(next));
+    localStorage.setItem('app_trips_v20', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2622,7 +2807,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v19', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v20', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2630,13 +2815,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v19', n);
+    localStorage.setItem('app_notice_v20', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v19', icon);
+    localStorage.setItem('app_login_icon_v20', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
