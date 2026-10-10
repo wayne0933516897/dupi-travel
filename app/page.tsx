@@ -46,6 +46,16 @@ interface Trip { id: string; title: string; startDate: string; endDate: string; 
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
+// 💥 每個版本日誌皆有獨立開關 (enabled)
+interface ChangelogItem {
+  id: string;
+  version: string;
+  date: string;
+  title: string;
+  items: string[];
+  enabled: boolean;
+}
+
 const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Bear&backgroundColor=b6e3f4',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Panda&backgroundColor=c0aede',
@@ -56,6 +66,34 @@ const PRESET_ANIMAL_AVATARS = [
 ];
 
 const PRESET_TRIP_ICONS = ['☃️', '❄️', '🗻', '✈️', '🌸', '⛩️', '🗼', '🌴', '🍜', '⛺', '🏖️', '🚗', '🎡', '🍱'];
+
+// 系統預設範例日誌
+const DEFAULT_CHANGELOGS: ChangelogItem[] = [
+  {
+    id: 'log-1',
+    version: 'v2.3',
+    date: '2026-10-10',
+    title: '📢 跑馬燈公告升級與地標 POI 搜尋引擎',
+    items: [
+      '首頁公告支援超長文字平滑無縫循環滾動 (Marquee)，點擊可查閱公告詳情。',
+      '新增系統公告與版本更新日誌中心彈窗，管理員可自由獨立開關各版本。',
+      '行程排程支援 OpenStreetMap 全球地標即時自動補全（如台北101、晴空塔等）。',
+      'Google Maps 導航改為直接喚起 App，徹底消滅 Safari 空白分頁。'
+    ],
+    enabled: true
+  },
+  {
+    id: 'log-2',
+    version: 'v2.2',
+    date: '2026-10-10',
+    title: '❤️ 日誌社群互動（按讚與留言串）',
+    items: [
+      '日誌卡片支援點擊愛心切換按讚/收回讚，讚數即時全域同步。',
+      '新增多用戶即時留言串功能，支援留言發布與本人/管理員刪除。'
+    ],
+    enabled: true
+  }
+];
 
 function generateJoinCode(existingTrips: Trip[]): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -115,13 +153,12 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
-// 智慧地標搜尋輔助：根據地名自動配對適合的 Emoji
 function detectPlaceIcon(name: string): string {
+  if (/101|塔|tower|晴空塔|展望台|skytree/i.test(name)) return '🗼';
   if (/機場|飛機|airport|flight/i.test(name)) return '✈️';
   if (/飯店|酒店|旅館|hotel|inn|hostel/i.test(name)) return '🏨';
   if (/拉麵|壽司|料理|餐廳|食|餐|咖啡|甜點|肉|居酒屋|cafe|food/i.test(name)) return '🍜';
   if (/神社|寺|宮|大社|鳥居/i.test(name)) return '⛩️';
-  if (/塔|tower|晴空塔|展望台|skytree/i.test(name)) return '🗼';
   if (/樂園|迪士尼|環球|影城|動物園|公園|park/i.test(name)) return '🎡';
   if (/站|車站|地鐵|JR|station/i.test(name)) return '🚉';
   if (/溫泉|湯|spa/i.test(name)) return '♨️';
@@ -428,7 +465,6 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
       <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">肚皮旅遊</h1>
       <p className="text-xs text-gray-400 mb-6 font-black tracking-widest uppercase">最好用的旅遊規劃</p>
 
-      {/* 切換登入與註冊 */}
       <div className="w-full max-w-xs bg-white rounded-2xl p-1 mb-6 flex shadow-sm border border-gray-100 font-black">
         <button
           onClick={() => setMode('login')}
@@ -594,7 +630,11 @@ function TripSelector({
   onUpdateMembers, 
   onUpdateUser, 
   notice, 
+  noticeEnabled,
   onUpdateNotice, 
+  onUpdateNoticeEnabled,
+  changelogs,
+  onUpdateChangelogs,
   loginIcon, 
   onUpdateLoginIcon, 
   onJoinTrip 
@@ -611,7 +651,11 @@ function TripSelector({
   onUpdateMembers: any, 
   onUpdateUser: (u: Member) => void, 
   notice: string, 
+  noticeEnabled: boolean,
   onUpdateNotice: (n: string) => void, 
+  onUpdateNoticeEnabled: (enabled: boolean) => void,
+  changelogs: ChangelogItem[],
+  onUpdateChangelogs: (logs: ChangelogItem[]) => void,
   loginIcon: string, 
   onUpdateLoginIcon: (icon: string) => void, 
   onJoinTrip: (code: string) => void 
@@ -623,6 +667,30 @@ function TripSelector({
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showLoginIconModal, setShowLoginIconModal] = useState(false);
+
+  // 公告中心彈窗
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+
+  // Wayne 專用公告管理編輯彈窗
+  const [showNoticeAdminModal, setShowNoticeAdminModal] = useState(false);
+  const [tempNoticeText, setTempNoticeText] = useState(notice || '');
+  const [tempNoticeEnabled, setTempNoticeEnabled] = useState(noticeEnabled);
+
+  // 版本日誌管理編輯彈窗
+  const [showChangelogAdminModal, setShowChangelogAdminModal] = useState(false);
+  const [editingLogItem, setEditingLogItem] = useState<{
+    id: string;
+    version: string;
+    date: string;
+    title: string;
+    itemsText: string;
+    enabled: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    setTempNoticeText(notice || '');
+    setTempNoticeEnabled(noticeEnabled);
+  }, [notice, noticeEnabled]);
 
   const [editingTripSetting, setEditingTripSetting] = useState<{
     original: Trip;
@@ -695,6 +763,12 @@ function TripSelector({
     setEditingTripSetting(null);
   };
 
+  const displayNoticeText = notice || '歡迎使用肚皮旅遊！祝各位旅遊愉快✈️ 點擊查看公告與版本更新～';
+
+  const visibleChangelogs = useMemo(() => {
+    return changelogs.filter(l => l.enabled);
+  }, [changelogs]);
+
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
       {/* 頂部成員與選單 */}
@@ -720,13 +794,23 @@ function TripSelector({
                 👤 修改個人設定
               </button>
 
+              <button onClick={() => { setShowUserDropdown(false); setShowNoticeModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-amber-700 font-black">
+                📜 公告與版本更新
+              </button>
+
               {isWayne && (
                 <>
+                  <button onClick={() => { setShowUserDropdown(false); setShowNoticeAdminModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-emerald-600 font-black">
+                    📢 首頁公告開關 ({noticeEnabled ? '顯示中' : '已關閉'})
+                  </button>
+                  <button onClick={() => { setShowUserDropdown(false); setShowChangelogAdminModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-indigo-600 font-black">
+                    ⚙️ 管理版本日記 ({visibleChangelogs.length} 個顯示中)
+                  </button>
                   <button onClick={() => { setShowUserDropdown(false); setShowLoginIconModal(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 text-purple-600 font-black">
                     🖼️ 更換登入頁圖示
                   </button>
                   <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 font-black">
-                    ⚙️ 成員管理名冊
+                    👥 成員管理名冊
                   </button>
                 </>
               )}
@@ -738,21 +822,35 @@ function TripSelector({
         </div>
       </div>
 
-      {/* 公告 */}
-      <div className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-4 mb-6 flex justify-between items-center font-black">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <span className="text-lg">📢</span>
-          <p className="text-xs text-amber-900 truncate">{notice || '歡迎使用肚皮旅遊！祝旅途愉快～'}</p>
+      {/* 首頁跑馬燈（noticeEnabled 為 true 時顯示） */}
+      {noticeEnabled && (
+        <div 
+          onClick={() => setShowNoticeModal(true)}
+          className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-3.5 mb-6 flex items-center gap-2.5 font-black shadow-sm cursor-pointer hover:bg-[#E9C46A]/30 active:scale-98 transition-all overflow-hidden relative animate-in fade-in"
+        >
+          <span className="text-base shrink-0 z-10 bg-[#FAF6E8] p-1 rounded-lg">📢</span>
+          
+          <div className="overflow-hidden whitespace-nowrap flex-1 relative flex">
+            <style dangerouslySetInnerHTML={{__html: `
+              @keyframes dupiMarquee {
+                0% { transform: translateX(0%); }
+                100% { transform: translateX(-50%); }
+              }
+            `}} />
+            <div 
+              style={{ animation: 'dupiMarquee 20s linear infinite' }}
+              className="inline-flex whitespace-nowrap items-center will-change-transform"
+            >
+              <span className="text-xs text-amber-900 mr-12">{displayNoticeText}</span>
+              <span className="text-xs text-amber-900 mr-12">{displayNoticeText}</span>
+            </div>
+          </div>
+
+          <span className="text-[10px] text-amber-800 bg-white/60 px-2 py-0.5 rounded-lg shrink-0 z-10 font-black shadow-xs">
+            詳情 📜
+          </span>
         </div>
-        {isWayne && (
-          <button onClick={() => {
-            const nextNotice = prompt("修改首頁公告內容：", notice);
-            if (nextNotice !== null) onUpdateNotice(nextNotice);
-          }} className="text-[10px] bg-white px-3 py-1.5 rounded-xl shadow-sm hover:bg-amber-50 shrink-0 ml-2 font-black">
-            🖋️ 編輯公告
-          </button>
-        )}
-      </div>
+      )}
 
       {/* Wayne 專屬：查看全站行程開關 */}
       {isWayne && (
@@ -818,7 +916,6 @@ function TripSelector({
                 onClick={() => onSelect(trip)} 
                 className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-98 transition-all cursor-pointer"
               >
-                {/* 行程圖示 */}
                 <div 
                   onClick={(e) => {
                     if (canEditThisTrip) {
@@ -892,6 +989,349 @@ function TripSelector({
           );
         })}
       </div>
+
+      {/* 「公告與版本更新日誌中心」彈窗 */}
+      {showNoticeModal && (
+        <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
+          <div className="bg-white w-full max-w-lg p-7 rounded-[44px] shadow-2xl text-black my-auto max-h-[88vh] overflow-y-auto animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📢</span>
+                <div>
+                  <h3 className="text-lg text-black font-black">公告與版本更新中心</h3>
+                  <p className="text-[10px] text-gray-400">Dupi Travel Changelog & Notice</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowNoticeModal(false)}
+                className="text-gray-400 hover:text-black text-xl p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 區塊 1：當前置頂公告 */}
+            {noticeEnabled && (
+              <div className="bg-amber-50 border border-amber-200/80 rounded-3xl p-5 mb-6">
+                <span className="text-[10px] bg-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-full font-black">
+                  📌 當前置頂公告
+                </span>
+                <p className="text-xs text-amber-950 leading-relaxed font-bold whitespace-pre-wrap mt-2">
+                  {notice || '歡迎使用肚皮旅遊！祝各位旅途平安愉快～'}
+                </p>
+              </div>
+            )}
+
+            {/* 區塊 2：版本更新日誌 */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-xs text-[#5E9E8E] uppercase tracking-wider">📜 歷史版本更新日誌</span>
+                {isWayne && (
+                  <button 
+                    onClick={() => { setShowNoticeModal(false); setShowChangelogAdminModal(true); }}
+                    className="text-[10px] text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-xl font-black hover:bg-indigo-100"
+                  >
+                    ⚙️ 管理日記
+                  </button>
+                )}
+              </div>
+
+              {visibleChangelogs.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-xs bg-gray-50 rounded-3xl border border-gray-100">
+                  <p>目前尚無已公開的版本更新日誌</p>
+                  {isWayne && (
+                    <button 
+                      onClick={() => { setShowNoticeModal(false); setShowChangelogAdminModal(true); }}
+                      className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-sm"
+                    >
+                      前往管理並開啟版本日記
+                    </button>
+                  )}
+                </div>
+              ) : (
+                visibleChangelogs.map(log => (
+                  <div key={log.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-xs text-emerald-800 font-black bg-emerald-100/60 px-2 py-0.5 rounded-lg">
+                        {log.version}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
+                    </div>
+                    <h4 className="text-xs text-black font-black mb-2">{log.title}</h4>
+                    <ul className="space-y-1">
+                      {log.items.map((item, itemIdx) => (
+                        <li key={itemIdx} className="text-[11px] text-gray-600 font-normal leading-relaxed flex items-start gap-1.5">
+                          <span className="text-emerald-500 font-black mt-0.5">•</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button 
+              onClick={() => setShowNoticeModal(false)}
+              className="w-full mt-6 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform"
+            >
+              關閉視窗
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Wayne 管理員首頁公告開關彈窗 */}
+      {showNoticeAdminModal && (
+        <div className="fixed inset-0 bg-black/80 z-[130] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-7 rounded-[44px] shadow-2xl text-black">
+            <h3 className="text-center italic mb-1 uppercase text-lg">首頁公告設定 (Wayne Only)</h3>
+            <p className="text-xs text-gray-400 text-center mb-6">可關閉公告以保持首頁乾淨，或開啟跑馬燈公告通知旅伴</p>
+
+            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-between items-center mb-5">
+              <div>
+                <p className="text-xs font-black">首頁跑馬燈顯示狀態</p>
+                <p className="text-[10px] text-gray-400 font-normal">
+                  {tempNoticeEnabled ? '🟢 目前狀態：已開啟並顯示於首頁' : '⚪ 目前狀態：已關閉隱藏（首頁不顯示）'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTempNoticeEnabled(!tempNoticeEnabled)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${tempNoticeEnabled ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}
+              >
+                {tempNoticeEnabled ? '顯示中' : '已關閉'}
+              </button>
+            </div>
+
+            <label className="text-[10px] text-gray-500 ml-1">公告內容文字 (超長文字會自動無縫循環跑馬燈)</label>
+            <textarea
+              rows={4}
+              value={tempNoticeText}
+              onChange={(e) => setTempNoticeText(e.target.value)}
+              placeholder="請輸入欲在首頁展示的公告內容..."
+              className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 mt-1 mb-6 leading-relaxed"
+            />
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowNoticeAdminModal(false)}
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateNotice(tempNoticeText.trim());
+                  onUpdateNoticeEnabled(tempNoticeEnabled);
+                  alert(`✅ 公告已成功儲存！當前狀態：${tempNoticeEnabled ? '【開啟顯示】' : '【關閉隱藏】'}`);
+                  setShowNoticeAdminModal(false);
+                }}
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md italic"
+              >
+                ✓ 儲存套用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wayne 管理員自訂版本日誌中心 */}
+      {showChangelogAdminModal && (
+        <div className="fixed inset-0 bg-black/80 z-[140] p-4 flex items-center justify-center">
+          <div className="bg-white w-full max-w-lg max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-lg font-black text-black">管理版本日誌</h3>
+                <p className="text-[10px] text-gray-400 font-mono">Wayne Only · 每個版本皆可獨立開關顯示</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowChangelogAdminModal(false)} 
+                className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black active:scale-90 transition-transform"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1 space-y-4">
+              {editingLogItem ? (
+                <div className="bg-gray-50 p-4 rounded-3xl border border-gray-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-xs text-indigo-600 font-black">
+                      {editingLogItem.id ? '🖋️ 編輯版本日誌' : '➕ 新增版本日誌'}
+                    </h4>
+                    <button type="button" onClick={() => setEditingLogItem(null)} className="text-xs text-gray-400 hover:text-black">取消</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="版本號 (如 v2.4)"
+                      value={editingLogItem.version}
+                      onChange={e => setEditingLogItem({ ...editingLogItem, version: e.target.value })}
+                      className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
+                    />
+                    <input
+                      type="date"
+                      value={editingLogItem.date}
+                      onChange={e => setEditingLogItem({ ...editingLogItem, date: e.target.value })}
+                      className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="標題 (如: 新增日誌按讚留言功能)"
+                    value={editingLogItem.title}
+                    onChange={e => setEditingLogItem({ ...editingLogItem, title: e.target.value })}
+                    className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
+                  />
+                  <label className="text-[10px] text-gray-400 block ml-1">更新項目說明 (每換一行代表一個項目點)：</label>
+                  <textarea
+                    rows={3}
+                    placeholder="項目 1&#10;項目 2&#10;項目 3..."
+                    value={editingLogItem.itemsText}
+                    onChange={e => setEditingLogItem({ ...editingLogItem, itemsText: e.target.value })}
+                    className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none leading-relaxed"
+                  />
+
+                  <div className="flex justify-between items-center p-2.5 bg-white rounded-xl border border-gray-100">
+                    <span className="text-xs text-gray-600 font-black">此版本是否公開顯示？</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingLogItem({ ...editingLogItem, enabled: !editingLogItem.enabled })}
+                      className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editingLogItem.enabled ? 'bg-emerald-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'}`}
+                    >
+                      {editingLogItem.enabled ? '🟢 顯示中' : '⚪ 已隱藏'}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!editingLogItem.version.trim() || !editingLogItem.title.trim()) {
+                        return alert("請填寫版本號與標題！");
+                      }
+                      const parsedItems = editingLogItem.itemsText
+                        .split('\n')
+                        .map(s => s.trim())
+                        .filter(Boolean);
+
+                      let nextLogs: ChangelogItem[];
+                      if (editingLogItem.id) {
+                        nextLogs = changelogs.map(l => l.id === editingLogItem.id ? {
+                          id: l.id,
+                          version: editingLogItem.version.trim(),
+                          date: editingLogItem.date,
+                          title: editingLogItem.title.trim(),
+                          items: parsedItems,
+                          enabled: editingLogItem.enabled
+                        } : l);
+                      } else {
+                        nextLogs = [{
+                          id: Date.now().toString(),
+                          version: editingLogItem.version.trim(),
+                          date: editingLogItem.date || getTodayDateString(),
+                          title: editingLogItem.title.trim(),
+                          items: parsedItems,
+                          enabled: editingLogItem.enabled
+                        }, ...changelogs];
+                      }
+                      onUpdateChangelogs(nextLogs);
+                      setEditingLogItem(null);
+                      alert("✅ 版本日誌已儲存更新！");
+                    }}
+                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-md active:scale-98 transition-transform"
+                  >
+                    ✓ 儲存此版本
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingLogItem({
+                    id: '',
+                    version: '',
+                    date: getTodayDateString(),
+                    title: '',
+                    itemsText: '',
+                    enabled: true
+                  })}
+                  className="w-full py-3 border-2 border-dashed border-indigo-200 hover:border-indigo-400 text-indigo-600 hover:bg-indigo-50 rounded-2xl text-xs font-black transition-colors"
+                >
+                  + 新增一筆版本日誌
+                </button>
+              )}
+
+              <div className="space-y-2.5">
+                <p className="text-[10px] text-gray-400 ml-1">所有版本列表 ({changelogs.length})：</p>
+                {changelogs.map(log => (
+                  <div key={log.id} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-start">
+                    <div className="flex-1 mr-2 overflow-hidden">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded font-black">{log.version}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = changelogs.map(l => l.id === log.id ? { ...l, enabled: !l.enabled } : l);
+                            onUpdateChangelogs(next);
+                          }}
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-black ml-1 transition-all ${log.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-500'}`}
+                          title="點擊切換此版本是否公開"
+                        >
+                          {log.enabled ? '🟢 顯示中' : '⚪ 已隱藏'}
+                        </button>
+                      </div>
+                      <p className="text-xs font-black text-black mt-1 truncate">{log.title}</p>
+                      <p className="text-[10px] text-gray-500 font-normal mt-0.5">{log.items.length} 個更新條目</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0 items-center mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingLogItem({
+                          id: log.id,
+                          version: log.version,
+                          date: log.date,
+                          title: log.title,
+                          itemsText: log.items.join('\n'),
+                          enabled: log.enabled ?? true
+                        })}
+                        className="p-1.5 text-xs text-blue-500 hover:bg-blue-50 rounded-lg active:scale-90"
+                        title="編輯此版本"
+                      >
+                        🖋️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`確定要刪除版本【${log.version}】嗎？`)) {
+                            const next = changelogs.filter(l => l.id !== log.id);
+                            onUpdateChangelogs(next);
+                          }
+                        }}
+                        className="p-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg active:scale-90"
+                        title="刪除此版本"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowChangelogAdminModal(false)}
+              className="w-full mt-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl text-xs font-black shrink-0 transition-colors"
+            >
+              完成並關閉
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 「行程基本資料設定」彈窗 */}
       {editingTripSetting && (
@@ -1126,31 +1566,52 @@ function TripSelector({
         </div>
       )}
 
-      {/* 使用者管理名冊 */}
+      {/* 使用者管理名冊（頂部標題與 ✕ 固定置頂，清單內部滾動） */}
       {showUserAdmin && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center overflow-y-auto">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black font-black">
-            <div className="flex justify-between items-center mb-8 italic"><h3 className="text-xl">USER ADMIN (WAYNE ONLY)</h3><button onClick={()=>setShowUserAdmin(false)} className="text-gray-300">✕</button></div>
-            <button onClick={() => setEditingMember({id: Date.now().toString(), account:'', name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} className="w-full py-4 border-2 border-dashed border-gray-200 rounded-3xl mb-8 text-gray-400 font-black">+ NEW USER</button>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center">
+          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-lg font-black text-black">USER ADMIN</h3>
+                <p className="text-[10px] text-gray-400 font-mono">Wayne Only · 共 {allMembers.length} 位成員</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowUserAdmin(false)} 
+                className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black active:scale-90 transition-transform"
+              >
+                ✕
+              </button>
+            </div>
+
+            <button 
+              type="button" 
+              onClick={() => setEditingMember({id: Date.now().toString(), account:'', name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} 
+              className="w-full py-3 border-2 border-dashed border-gray-200 hover:border-emerald-300 rounded-2xl mb-4 text-gray-400 hover:text-emerald-600 text-xs font-black shrink-0 transition-colors"
+            >
+              + NEW USER
+            </button>
+
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
               {allMembers.map(m => (
-                <div key={m.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-3xl shadow-sm">
-                  <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1 font-black">
-                    <p className="text-sm font-black">{m.name}</p>
-                    <p className="text-[10px] text-gray-400 font-mono">帳號: {m.account || m.loginCode} | 密碼: {m.loginCode}</p>
+                <div key={m.id} className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-2xl shadow-xs">
+                  <img src={m.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                  <div className="flex-1 overflow-hidden font-black">
+                    <p className="text-xs font-black text-black truncate">{m.name}</p>
+                    <p className="text-[9px] text-gray-400 font-mono truncate">帳號: {m.account || m.loginCode} | 密碼: {m.loginCode}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={()=>setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => setEditingMember(m)} className="text-xs text-blue-500 hover:underline font-black">Edit</button>
                     {(m.account || m.loginCode) !== 'wayne' && (
                       <button 
+                        type="button" 
                         onClick={() => {
                           if (confirm(`確定要徹底刪除用戶「${m.name}」嗎？\n（其過去記錄的記帳、日誌等資料仍會完整保留）`)) {
                             const nextMembers = allMembers.filter(item => item.id !== m.id);
                             onUpdateMembers(nextMembers);
                           }
                         }} 
-                        className="text-xs text-red-500 font-black ml-1"
+                        className="text-xs text-red-500 hover:underline font-black ml-1"
                       >
                         Delete
                       </button>
@@ -1235,7 +1696,7 @@ function TripSelector({
                   onUpdateUser(finalMember);
                 }
 
-                alert("✅ 修改成功！");
+                alert("✅ 資料修改成功！");
                 setEditingMember(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Save</button>
             </div>
@@ -1340,11 +1801,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
 
-  // 💥 行程景點編輯狀態（包含自動補全地標候選）
+  // 💥 行程景點編輯狀態（含點選鎖定標記）
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
   const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ title: string; subtitle: string; icon: string }>>([]);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const isSelectingPlaceRef = useRef(false);
 
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' });
@@ -1523,28 +1985,51 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 💥 智慧地標搜尋自動補全邏輯（避免打錯字）
+  // 💥 全球精確地標搜尋（含智慧去重、點選不重複彈出）
   useEffect(() => {
+    if (isSelectingPlaceRef.current) {
+      isSelectingPlaceRef.current = false;
+      return;
+    }
+
     const query = planForm.title.trim();
     if (query.length < 2) {
       setPlaceSuggestions([]);
+      setIsSearchingPlaces(false);
       return;
     }
 
     const timer = setTimeout(async () => {
       setIsSearchingPlaces(true);
       try {
-        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=zh&format=json`);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10&countrycodes=tw,jp&accept-language=zh-TW,zh,ja`
+        );
         const data = await res.json();
-        if (data.results && Array.isArray(data.results)) {
-          const formatted = data.results.map((r: any) => {
-            const locDetails = [r.admin1, r.country].filter(Boolean).join(', ');
-            return {
-              title: r.name,
-              subtitle: locDetails || '地點',
-              icon: detectPlaceIcon(r.name)
-            };
-          });
+        if (Array.isArray(data) && data.length > 0) {
+          const seen = new Set<string>();
+          const formatted: Array<{ title: string; subtitle: string; icon: string }> = [];
+
+          for (const item of data) {
+            const shortName = item.name || item.display_name.split(',')[0];
+            const addressParts = [
+              item.address?.suburb || item.address?.city || item.address?.town || '',
+              item.address?.country || ''
+            ].filter(Boolean).join(', ');
+
+            // 智慧去重：如果完全一樣的名稱已存在，就不重複列出
+            const key = `${shortName}-${addressParts}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              formatted.push({
+                title: shortName,
+                subtitle: addressParts || item.display_name.slice(0, 30),
+                icon: detectPlaceIcon(shortName)
+              });
+            }
+            if (formatted.length >= 5) break; // 只取前 5 個精選地標
+          }
+
           setPlaceSuggestions(formatted);
         } else {
           setPlaceSuggestions([]);
@@ -1554,12 +2039,12 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
       } finally {
         setIsSearchingPlaces(false);
       }
-    }, 300);
+    }, 350);
 
     return () => clearTimeout(timer);
   }, [planForm.title]);
 
-  // 💥 城市天氣自動補全搜尋
+  // 城市天氣自動補全搜尋
   useEffect(() => {
     const q = newCityName.trim();
     if (q.length < 2) {
@@ -1750,7 +2235,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                       + 新增
                     </button>
 
-                    {/* 城市候選下拉選單 */}
                     {citySuggestions.length > 0 && (
                       <div className="absolute top-11 left-0 right-14 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                         {citySuggestions.map((cityName, idx) => (
@@ -1858,7 +2342,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             </div>
                             <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black">{item.desc}</p>
                             <div className="mt-4 flex justify-between items-center">
-                                {/* 💥 核心修正：使用 window.location.href 直接喚起 Google Maps App，不留空白分頁 */}
                                 <button 
                                   onClick={(e) => { 
                                     e.stopPropagation(); 
@@ -2095,7 +2578,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 </div>
               </>
             ) : (
-              /* --- 查帳統計頁面 --- */
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
                   <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-3">選擇成員查帳 (可複選)</h4>
@@ -2560,15 +3042,15 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                   onUpdateUser(finalMember);
                 }
 
-                alert("✅ 修改成功！");
+                alert("✅ 資料修改成功！");
                 setEditingMemberModal(null);
-              }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">儲存成員</button>
+              }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Save</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 💥 行程景點編輯彈窗（含即時地標智慧搜尋建議選單） */}
+      {/* 💥 行程景點編輯彈窗（完整修正：點擊候選不重複彈出 + 透明遮罩點擊關閉 + 智慧去重） */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black max-h-[90vh] overflow-y-auto">
@@ -2583,12 +3065,11 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     </select>
                 </div>
 
-                {/* 地標搜尋輸入框與下拉建議 */}
                 <div className="relative mb-4">
                   <div className="flex items-center gap-2 bg-gray-50 p-2 px-4 rounded-[28px] border border-gray-200">
                     <span className="text-2xl">{planForm.icon || '📍'}</span>
                     <input 
-                      placeholder="要去哪裡？(輸入地標名稱自動帶出)..." 
+                      placeholder="要去哪裡？(輸入地標名稱自動搜尋)..." 
                       value={planForm.title} 
                       onChange={e => {
                         const val = e.target.value;
@@ -2599,33 +3080,48 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
                   </div>
 
-                  {/* 即時地標建議下拉清單 */}
+                  {/* 💥 地標建議下拉清單 */}
                   {placeSuggestions.length > 0 && (
-                    <div className="absolute top-16 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-emerald-100 z-50 overflow-hidden max-h-56 overflow-y-auto animate-in fade-in">
-                      <div className="p-2 px-4 text-[10px] text-gray-400 bg-gray-50 border-b border-gray-100 font-black">
-                        💡 點選官方標準地標（避免導航錯誤）：
-                      </div>
-                      {placeSuggestions.map((place, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => {
-                            setPlanForm({
-                              ...planForm,
-                              title: place.title,
-                              icon: place.icon
-                            });
-                            setPlaceSuggestions([]);
-                          }}
-                          className="p-3.5 px-4 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-b-0 flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="text-lg">{place.icon}</span>
-                            <span className="text-sm font-black text-black truncate">{place.title}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-normal shrink-0 ml-2">{place.subtitle}</span>
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setPlaceSuggestions([])} 
+                      />
+
+                      <div className="absolute top-16 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-emerald-100 z-50 overflow-hidden max-h-60 overflow-y-auto animate-in fade-in">
+                        <div className="p-2.5 px-4 text-[10px] text-gray-400 bg-gray-50 border-b border-gray-100 font-black flex justify-between items-center">
+                          <span>💡 點選官方標準地標（自動修正地名）：</span>
+                          <button
+                            type="button"
+                            onClick={() => setPlaceSuggestions([])}
+                            className="text-gray-400 hover:text-black font-black bg-gray-200/60 hover:bg-gray-200 px-2 py-0.5 rounded-full text-[9px]"
+                          >
+                            ✕ 收起
+                          </button>
                         </div>
-                      ))}
-                    </div>
+                        {placeSuggestions.map((place, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              isSelectingPlaceRef.current = true; // 鎖定不觸發重新搜尋
+                              setPlanForm({
+                                ...planForm,
+                                title: place.title,
+                                icon: place.icon
+                              });
+                              setPlaceSuggestions([]);
+                            }}
+                            className="p-3.5 px-4 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-b-0 flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <span className="text-lg">{place.icon}</span>
+                              <span className="text-sm font-black text-black truncate">{place.title}</span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-normal shrink-0 ml-2 truncate max-w-[45%]">{place.subtitle}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -2720,6 +3216,11 @@ export default function AppEntry() {
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [selectedTrips, setSelectedTrips] = useState<Trip[]>([]);
   const [notice, setNotice] = useState<string>('');
+  const [noticeEnabled, setNoticeEnabled] = useState<boolean>(false);
+
+  // 版本日誌列表（每個項目自帶 enabled 開關）
+  const [changelogs, setChangelogs] = useState<ChangelogItem[]>(DEFAULT_CHANGELOGS);
+
   const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
@@ -2730,9 +3231,9 @@ export default function AppEntry() {
         account: m.account || m.loginCode || m.id
       }));
       setAllMembers(formatted);
-      localStorage.setItem('app_members_v21', JSON.stringify(formatted));
+      localStorage.setItem('app_members_v26', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v21');
+      const cachedM = localStorage.getItem('app_members_v26');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -2741,7 +3242,7 @@ export default function AppEntry() {
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v21', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v26', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -2753,16 +3254,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v21', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v26', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v21');
+      const cachedT = localStorage.getItem('app_trips_v26');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v21', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v26', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -2770,51 +3271,83 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v21', nData.content);
+      localStorage.setItem('app_notice_v26', nData.content);
+    }
+
+    const { data: neData } = await supabase.from('trips').select('content').eq('id', '__app_notice_enabled__').single();
+    if (neData?.content !== undefined) {
+      const isEn = Boolean(neData.content);
+      setNoticeEnabled(isEn);
+      localStorage.setItem('app_notice_enabled_v26', JSON.stringify(isEn));
+    }
+
+    // 讀取自訂版本日誌資料
+    const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
+    if (cData?.content && Array.isArray(cData.content)) {
+      const formattedLogs = (cData.content as any[]).map(item => ({
+        ...item,
+        enabled: item.enabled !== undefined ? item.enabled : true
+      }));
+      setChangelogs(formattedLogs);
+      localStorage.setItem('app_changelogs_v26', JSON.stringify(formattedLogs));
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v21', iData.content);
+      localStorage.setItem('app_login_icon_v26', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v21');
-    const localT = localStorage.getItem('app_trips_v21');
-    const localN = localStorage.getItem('app_notice_v21');
-    const localI = localStorage.getItem('app_login_icon_v21');
+    const localM = localStorage.getItem('app_members_v26');
+    const localT = localStorage.getItem('app_trips_v26');
+    const localN = localStorage.getItem('app_notice_v26');
+    const localNE = localStorage.getItem('app_notice_enabled_v26');
+    const localC = localStorage.getItem('app_changelogs_v26');
+    const localI = localStorage.getItem('app_login_icon_v26');
+
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
+    if (localNE) setNoticeEnabled(JSON.parse(localNE));
+    if (localC) setChangelogs(JSON.parse(localC));
     if (localI) setLoginIcon(localI);
 
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v21')
+      .channel('app-global-sync-v26')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
+        { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_notice_enabled__,__app_changelogs__,__app_login_icon__)' },
         (payload) => {
           if (payload.new) {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v21', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v26', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v21', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v26', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v21', p.content);
+              localStorage.setItem('app_notice_v26', p.content);
+            }
+            if (p.id === '__app_notice_enabled__') {
+              const isEn = Boolean(p.content);
+              setNoticeEnabled(isEn);
+              localStorage.setItem('app_notice_enabled_v26', JSON.stringify(isEn));
+            }
+            if (p.id === '__app_changelogs__' && Array.isArray(p.content)) {
+              setChangelogs(p.content);
+              localStorage.setItem('app_changelogs_v26', JSON.stringify(p.content));
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v21', p.content);
+              localStorage.setItem('app_login_icon_v26', p.content);
             }
           }
         }
@@ -2828,7 +3361,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v21', JSON.stringify(newM));
+    localStorage.setItem('app_members_v26', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2840,14 +3373,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v21', JSON.stringify(next));
+    localStorage.setItem('app_trips_v26', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v21', JSON.stringify(next));
+    localStorage.setItem('app_trips_v26', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2857,7 +3390,7 @@ export default function AppEntry() {
     if (selectedTrip && selectedTrip.id === updated.id) {
       setSelectedTrip(updated);
     }
-    localStorage.setItem('app_trips_v21', JSON.stringify(next));
+    localStorage.setItem('app_trips_v26', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2947,7 +3480,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v21', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v26', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2955,13 +3488,25 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v21', n);
+    localStorage.setItem('app_notice_v26', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
+  };
+
+  const handleUpdateNoticeEnabled = async (enabled: boolean) => {
+    setNoticeEnabled(enabled);
+    localStorage.setItem('app_notice_enabled_v26', JSON.stringify(enabled));
+    await supabase.from('trips').upsert({ id: '__app_notice_enabled__', content: enabled });
+  };
+
+  const handleUpdateChangelogs = async (logs: ChangelogItem[]) => {
+    setChangelogs(logs);
+    localStorage.setItem('app_changelogs_v26', JSON.stringify(logs));
+    await supabase.from('trips').upsert({ id: '__app_changelogs__', content: logs });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v21', icon);
+    localStorage.setItem('app_login_icon_v26', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
@@ -2997,7 +3542,11 @@ export default function AppEntry() {
       onUpdateMembers={handleUpdateMembers} 
       onUpdateUser={setUser}
       notice={notice}
+      noticeEnabled={noticeEnabled}
       onUpdateNotice={handleUpdateNotice}
+      onUpdateNoticeEnabled={handleUpdateNoticeEnabled}
+      changelogs={changelogs}
+      onUpdateChangelogs={handleUpdateChangelogs}
       loginIcon={loginIcon}
       onUpdateLoginIcon={handleUpdateLoginIcon}
       onJoinTrip={handleJoinTrip}
