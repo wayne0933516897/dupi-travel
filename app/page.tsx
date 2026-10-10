@@ -101,15 +101,13 @@ function getDateObj(startStr: string, dayIndex: number): Date {
 function ImageUploader({ 
   onUpload, 
   label, 
-  maxDimension = 400, 
-  quality = 0.75, 
-  aspectRatio = 1 
+  maxDimension = 600, 
+  quality = 0.8
 }: { 
   onUpload: (base64: string) => void, 
   label: string, 
   maxDimension?: number, 
-  quality?: number, 
-  aspectRatio?: number 
+  quality?: number
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [croppingImage, setCroppingImage] = useState<string | null>(null);
@@ -117,6 +115,7 @@ function ImageUploader({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,36 +150,32 @@ function ImageUploader({
   };
 
   const handleConfirmCrop = () => {
-    if (!imgRef.current) return;
+    if (!imgRef.current || !containerRef.current) return;
     const img = imgRef.current;
+    const container = containerRef.current;
+
     const canvas = document.createElement('canvas');
-    const targetSize = maxDimension;
-    canvas.width = targetSize;
-    canvas.height = targetSize / aspectRatio;
+    canvas.width = maxDimension;
+    canvas.height = maxDimension;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const boxSize = 260;
-    const displayedWidth = img.clientWidth * zoom;
-    const displayedHeight = img.clientHeight * zoom;
+    const boxRect = container.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
 
-    const scaleX = img.naturalWidth / displayedWidth;
-    const scaleY = img.naturalHeight / displayedHeight;
+    const scale = img.naturalWidth / imgRect.width;
 
-    const cropBoxX = (displayedWidth - boxSize) / 2 - offset.x;
-    const cropBoxY = (displayedHeight - boxSize) / 2 - offset.y;
-
-    const sourceX = cropBoxX * scaleX;
-    const sourceY = cropBoxY * scaleY;
-    const sourceW = boxSize * scaleX;
-    const sourceH = boxSize * scaleY;
+    const cropX = (boxRect.left - imgRect.left) * scale;
+    const cropY = (boxRect.top - imgRect.top) * scale;
+    const cropW = boxRect.width * scale;
+    const cropH = boxRect.height * scale;
 
     ctx.drawImage(
       img,
-      Math.max(0, sourceX),
-      Math.max(0, sourceY),
-      sourceW,
-      sourceH,
+      cropX,
+      cropY,
+      cropW,
+      cropH,
       0,
       0,
       canvas.width,
@@ -207,10 +202,11 @@ function ImageUploader({
         <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-[36px] p-6 max-w-sm w-full text-black font-black flex flex-col items-center animate-in zoom-in-95">
             <h4 className="text-base font-black mb-1">調整照片大小與位置</h4>
-            <p className="text-[10px] text-gray-400 mb-4">用手指或滑鼠拖曳移動，使用滑桿放大縮小</p>
+            <p className="text-[10px] text-gray-400 mb-4">拖曳調整位置，滑桿調整放大縮小</p>
 
             <div 
-              className="w-[260px] h-[260px] rounded-3xl overflow-hidden relative bg-gray-900 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
+              ref={containerRef}
+              className="w-[260px] h-[260px] rounded-3xl overflow-hidden relative bg-gray-100 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
               onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
               onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
               onMouseUp={handlePointerUp}
@@ -226,22 +222,23 @@ function ImageUploader({
                 style={{
                   transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
                   transformOrigin: 'center center',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
+                  maxWidth: 'none',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
                   pointerEvents: 'none'
                 }}
               />
-              <div className="absolute inset-0 pointer-events-none border border-white/40 rounded-2xl flex items-center justify-center">
-                <span className="text-[10px] text-white/50 bg-black/40 px-2 py-0.5 rounded-full">預覽範圍</span>
+              <div className="absolute inset-0 pointer-events-none border-2 border-white/60 rounded-2xl flex items-center justify-center shadow-inner">
+                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full font-black">預覽裁切範圍</span>
               </div>
             </div>
 
             <div className="w-full mt-5 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                <span>小 (1.0x)</span>
+                <span>原尺寸 (1.0x)</span>
                 <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
-                <span>大 (3.0x)</span>
+                <span>放大 (3.0x)</span>
               </div>
               <input
                 type="range"
@@ -395,8 +392,8 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
         )}
       </div>
 
-      <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">Dupi Travel</h1>
-      <p className="text-xs text-gray-400 mb-6 font-black tracking-widest uppercase">Multi-user Travel Planner</p>
+      <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">肚皮旅遊</h1>
+      <p className="text-xs text-gray-400 mb-6 font-black tracking-widest uppercase">最好用的旅遊規劃</p>
 
       {/* 切換登入與註冊 */}
       <div className="w-full max-w-xs bg-white rounded-2xl p-1 mb-6 flex shadow-sm border border-gray-100 font-black">
@@ -476,7 +473,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
             <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字，不可重複)</label>
             <input
               type="text"
-              placeholder="例如: wayne888, cat123"
+              placeholder="例如: cat123"
               value={regAccount}
               onChange={(e) => setRegAccount(e.target.value)}
               className="w-full p-3.5 bg-gray-50 rounded-xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 font-mono"
@@ -484,7 +481,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，登入顯示，不可重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，不可重複)</label>
             <input
               type="text"
               placeholder="例如: 柴犬, 肚皮"
@@ -550,8 +547,42 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面（支援發起人/Wayne 自訂與更換行程圖示/照片）
-function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteTrip, onUpdateTrip, allMembers, onUpdateMembers, onUpdateUser, notice, onUpdateNotice, loginIcon, onUpdateLoginIcon, onJoinTrip }: { user: Member, onLogout: () => void, onSelect: (trip: Trip) => void, allTrips: Trip[], onAddTrip: any, onDeleteTrip: any, onUpdateTrip: (t: Trip) => void, allMembers: Member[], onUpdateMembers: any, onUpdateUser: (u: Member) => void, notice: string, onUpdateNotice: (n: string) => void, loginIcon: string, onUpdateLoginIcon: (icon: string) => void, onJoinTrip: (code: string) => void }) {
+// 2. 主畫面（支援 onUpdateTrip 與 onUpdateTripWithMigration）
+function TripSelector({ 
+  user, 
+  onLogout, 
+  onSelect, 
+  allTrips, 
+  onAddTrip, 
+  onDeleteTrip, 
+  onUpdateTrip,
+  onUpdateTripWithMigration, 
+  allMembers, 
+  onUpdateMembers, 
+  onUpdateUser, 
+  notice, 
+  onUpdateNotice, 
+  loginIcon, 
+  onUpdateLoginIcon, 
+  onJoinTrip 
+}: { 
+  user: Member, 
+  onLogout: () => void, 
+  onSelect: (trip: Trip) => void, 
+  allTrips: Trip[], 
+  onAddTrip: any, 
+  onDeleteTrip: any, 
+  onUpdateTrip: (t: Trip) => void,
+  onUpdateTripWithMigration: (updatedTrip: Trip, oldTrip: Trip) => Promise<void>, 
+  allMembers: Member[], 
+  onUpdateMembers: any, 
+  onUpdateUser: (u: Member) => void, 
+  notice: string, 
+  onUpdateNotice: (n: string) => void, 
+  loginIcon: string, 
+  onUpdateLoginIcon: (icon: string) => void, 
+  onJoinTrip: (code: string) => void 
+}) {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
@@ -560,8 +591,13 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showLoginIconModal, setShowLoginIconModal] = useState(false);
 
-  // 💥 編輯行程圖示彈窗狀態
-  const [editingTripIconTarget, setEditingTripIconTarget] = useState<Trip | null>(null);
+  const [editingTripSetting, setEditingTripSetting] = useState<{
+    original: Trip;
+    title: string;
+    startDate: string;
+    endDate: string;
+    emoji: string;
+  } | null>(null);
 
   const [wayneViewAll, setWayneViewAll] = useState(false);
 
@@ -584,6 +620,47 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
     }
     return allTrips.filter(t => t.memberIds.includes(user.id));
   }, [allTrips, user, isWayne, wayneViewAll]);
+
+  const editingTripDaysInfo = useMemo(() => {
+    if (!editingTripSetting) return { oldDays: 0, newDays: 0, diff: 0 };
+    const oldList = getDatesList(editingTripSetting.original.startDate, editingTripSetting.original.endDate);
+    const newList = getDatesList(editingTripSetting.startDate, editingTripSetting.endDate);
+    return {
+      oldDays: oldList.length,
+      newDays: newList.length,
+      diff: newList.length - oldList.length
+    };
+  }, [editingTripSetting]);
+
+  const handleSaveTripSettings = async () => {
+    if (!editingTripSetting) return;
+    const { original, title, startDate, endDate, emoji } = editingTripSetting;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return alert("❌ 請輸入旅行名稱！");
+    if (!startDate || !endDate) return alert("❌ 請選取完整的旅行起訖日期！");
+    if (new Date(startDate) > new Date(endDate)) return alert("❌ 開始日期不可晚於結束日期！");
+
+    const { oldDays, newDays, diff } = editingTripDaysInfo;
+
+    if (diff < 0) {
+      const confirmReduce = confirm(
+        `⚠️ 天數縮短提醒：\n原行程為 ${oldDays} 天，修改後為 ${newDays} 天。\n系統將自動保留前 ${newDays} 天排程，超出範圍的排程景點將被清除，記帳項目將自動轉為 (旅行外) 保存。\n\n確定要縮短天數並儲存嗎？`
+      );
+      if (!confirmReduce) return;
+    }
+
+    const updated: Trip = {
+      ...original,
+      title: trimmedTitle,
+      startDate,
+      endDate,
+      emoji
+    };
+
+    await onUpdateTripWithMigration(updated, original);
+    alert("✅ 行程基本資料與日期已成功更新！");
+    setEditingTripSetting(null);
+  };
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
@@ -632,7 +709,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
       <div className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-4 mb-6 flex justify-between items-center font-black">
         <div className="flex items-center gap-3 overflow-hidden">
           <span className="text-lg">📢</span>
-          <p className="text-xs text-amber-900 truncate">{notice || '歡迎使用 Dupi Travel！祝旅途愉快～'}</p>
+          <p className="text-xs text-amber-900 truncate">{notice || '歡迎使用肚皮旅遊！祝旅途愉快～'}</p>
         </div>
         {isWayne && (
           <button onClick={() => {
@@ -708,16 +785,22 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 onClick={() => onSelect(trip)} 
                 className="w-full bg-white p-6 rounded-[32px] shadow-xl flex items-center gap-6 text-left active:scale-98 transition-all cursor-pointer"
               >
-                {/* 💥 行程圖示展示區（具有權限者可點擊換圖） */}
+                {/* 行程圖示 */}
                 <div 
                   onClick={(e) => {
                     if (canEditThisTrip) {
                       e.stopPropagation();
-                      setEditingTripIconTarget(trip);
+                      setEditingTripSetting({
+                        original: trip,
+                        title: trip.title,
+                        startDate: trip.startDate,
+                        endDate: trip.endDate,
+                        emoji: trip.emoji || '☃️'
+                      });
                     }
                   }}
-                  title={canEditThisTrip ? "點擊更換旅行圖示" : undefined}
-                  className={`w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0 overflow-hidden relative shadow-inner ${canEditThisTrip ? 'hover:ring-2 hover:ring-[#5E9E8E] group cursor-pointer' : ''}`}
+                  title={canEditThisTrip ? "點擊開啟行程設定" : undefined}
+                  className={`w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0 overflow-hidden relative shadow-inner ${canEditThisTrip ? 'hover:ring-2 hover:ring-[#5E9E8E] cursor-pointer' : ''}`}
                 >
                   {isIconImage ? (
                     <img src={trip.emoji} alt="Trip Icon" className="w-full h-full object-cover" />
@@ -725,7 +808,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                     <span>{trip.emoji || '☃️'}</span>
                   )}
                   {canEditThisTrip && (
-                    <div className="absolute inset-0 bg-black/30 opacity-0 hover:opacity-100 flex items-center justify-center text-xs text-white transition-opacity">
+                    <div className="absolute inset-0 bg-black/25 opacity-0 hover:opacity-100 flex items-center justify-center text-xs text-white transition-opacity">
                       🖋️
                     </div>
                   )}
@@ -734,7 +817,25 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 <div className="flex-1 overflow-hidden">
                   <div className="flex items-center gap-2">
                     <h4 className="text-lg text-black truncate font-black">{trip.title}</h4>
-                    <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black">
+                    {canEditThisTrip && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTripSetting({
+                            original: trip,
+                            title: trip.title,
+                            startDate: trip.startDate,
+                            endDate: trip.endDate,
+                            emoji: trip.emoji || '☃️'
+                          });
+                        }}
+                        title="編輯行程名稱與日期"
+                        className="text-xs text-blue-500 hover:text-blue-700 bg-blue-50 p-1 rounded-lg shrink-0"
+                      >
+                        🖋️
+                      </button>
+                    )}
+                    <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg shrink-0 font-mono font-black ml-auto">
                       代碼: {trip.joinCode}
                     </span>
                   </div>
@@ -759,58 +860,97 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         })}
       </div>
 
-      {/* 💥 行程圖示更換 Modal (開團者或 Wayne 可用) */}
-      {editingTripIconTarget && (
-        <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
-            <h3 className="text-center italic mb-2 uppercase text-lg">更換旅行專屬圖示</h3>
-            <p className="text-xs text-gray-400 text-center mb-6">可挑選旅遊 Emoji，或上傳自訂照片裁切</p>
+      {/* 「行程基本資料設定」彈窗 */}
+      {editingTripSetting && (
+        <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
+          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black my-auto">
+            <h3 className="text-center italic mb-1 uppercase text-xl">行程基本資料設定</h3>
+            <p className="text-xs text-gray-400 text-center mb-6">修改封面圖示、行程名稱及旅行日期</p>
 
-            <div className="flex flex-col items-center gap-4 mb-6">
+            <div className="flex flex-col items-center gap-3 mb-5">
               <div className="w-20 h-20 bg-[#F2F1EB] rounded-[28px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-[#5E9E8E]">
-                {editingTripIconTarget.emoji && (editingTripIconTarget.emoji.startsWith('data:image') || editingTripIconTarget.emoji.startsWith('http')) ? (
-                  <img src={editingTripIconTarget.emoji} className="w-full h-full object-cover" alt="trip icon preview" />
+                {editingTripSetting.emoji && (editingTripSetting.emoji.startsWith('data:image') || editingTripSetting.emoji.startsWith('http')) ? (
+                  <img src={editingTripSetting.emoji} className="w-full h-full object-cover" alt="preview" />
                 ) : (
-                  <span>{editingTripIconTarget.emoji || '☃️'}</span>
+                  <span>{editingTripSetting.emoji || '☃️'}</span>
                 )}
               </div>
               <ImageUploader 
-                label="上傳自訂相片圖示" 
-                maxDimension={300} 
-                onUpload={(b64) => {
-                  const updated = { ...editingTripIconTarget, emoji: b64 };
-                  setEditingTripIconTarget(updated);
-                  onUpdateTrip(updated);
-                }} 
+                label="上傳自訂照片為封面" 
+                maxDimension={350} 
+                onUpload={(b64) => setEditingTripSetting({ ...editingTripSetting, emoji: b64 })} 
+              />
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full">
+                {PRESET_TRIP_ICONS.map((icon) => (
+                  <button
+                    key={icon}
+                    type="button"
+                    onClick={() => setEditingTripSetting({ ...editingTripSetting, emoji: icon })}
+                    className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center shrink-0 transition-all ${editingTripSetting.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'bg-gray-100'}`}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-[10px] text-gray-500 font-black ml-1">行程名稱 (Trip Title)</label>
+              <input
+                type="text"
+                placeholder="輸入行程名稱..."
+                value={editingTripSetting.title}
+                onChange={(e) => setEditingTripSetting({ ...editingTripSetting, title: e.target.value })}
+                className="w-full p-4 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 mt-1"
               />
             </div>
 
-            <p className="text-[10px] text-gray-500 mb-2 ml-1">常用推薦旅行圖示：</p>
-            <div className="grid grid-cols-7 gap-2 mb-6">
-              {PRESET_TRIP_ICONS.map((icon) => (
-                <button
-                  key={icon}
-                  onClick={() => {
-                    const updated = { ...editingTripIconTarget, emoji: icon };
-                    setEditingTripIconTarget(updated);
-                    onUpdateTrip(updated);
-                  }}
-                  className={`py-2 rounded-xl text-xl flex items-center justify-center transition-all ${editingTripIconTarget.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md scale-110' : 'bg-gray-100 hover:bg-gray-200'}`}
-                >
-                  {icon}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] text-gray-500 font-black ml-1">開始日期</label>
+                <input
+                  type="date"
+                  value={editingTripSetting.startDate}
+                  onChange={(e) => setEditingTripSetting({ ...editingTripSetting, startDate: e.target.value })}
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-black ml-1">結束日期</label>
+                <input
+                  type="date"
+                  value={editingTripSetting.endDate}
+                  onChange={(e) => setEditingTripSetting({ ...editingTripSetting, endDate: e.target.value })}
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1"
+                />
+              </div>
             </div>
 
-            <button
-              onClick={() => {
-                alert("✅ 旅行圖示已更新！");
-                setEditingTripIconTarget(null);
-              }}
-              className="w-full py-4 bg-[#86A760] text-white rounded-3xl font-black text-sm shadow-md"
-            >
-              完成設定
-            </button>
+            <div className={`p-3 rounded-2xl mb-6 text-xs border ${editingTripDaysInfo.diff < 0 ? 'bg-red-50 text-red-700 border-red-200' : editingTripDaysInfo.diff > 0 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
+              <p className="font-black">
+                📅 行程長度：{editingTripDaysInfo.newDays} 天
+                {editingTripDaysInfo.diff === 0 && ' (天數相同，排程與消費紀錄自動平移)'}
+                {editingTripDaysInfo.diff > 0 && ` (增加 ${editingTripDaysInfo.diff} 天，前段紀錄平移，新增天數空白)`}
+                {editingTripDaysInfo.diff < 0 && ` (減少 ${Math.abs(editingTripDaysInfo.diff)} 天，超出天數的行程將被清除)`}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingTripSetting(null)}
+                className="flex-1 py-4 bg-gray-100 rounded-3xl font-black text-xs"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTripSettings}
+                className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl font-black text-xs shadow-md italic"
+              >
+                ✓ 儲存修改
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -851,7 +991,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
         </div>
       )}
 
-      {/* 建立新行程彈窗 (支援挑選初始圖示) */}
+      {/* 建立新行程彈窗 */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1045,7 +1185,7 @@ function TripSelector({ user, onLogout, onSelect, allTrips, onAddTrip, onDeleteT
                 if (!trimmedPassword) return alert("❌ 請輸入密碼！");
 
                 const timestamp = new Date().toLocaleString();
-                const newLogs = [...(editingMember.editLogs || []), `Modified at ${timestamp}`];
+                const newLogs = [...(editingMember.editLogs || []), `${user.name} modified at ${timestamp}`];
                 const finalMember = { 
                   ...editingMember, 
                   account: targetAccount,
@@ -1158,7 +1298,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [expenseDate, setExpenseDate] = useState(defaultExpenseDate);
   const [customOtherDate, setCustomOtherDate] = useState(getTodayDateString());
 
-  const [newJournal, setNewJournal] = useState({ content: '', image: '' });
+  const [newJournal, setNewJournal] = useState<{ content: string; image: string }>({ content: '', image: '' });
   const [newTodoInput, setNewTodoInput] = useState({ task: '', note: '', assigneeIds: [user.id] as string[] });
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
@@ -1380,7 +1520,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         <div onClick={onBack} className="flex items-center gap-3 cursor-pointer">
           <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">←</div>
           <div>
-            <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter leading-tight font-black">DUPI TRAVEL</h1>
+            <h1 className="text-xl italic uppercase text-[#5E9E8E] tracking-tighter leading-tight font-black">{tripData.title}</h1>
             <p className="text-[9px] text-gray-400 font-mono tracking-wider font-black">CODE: {tripData.joinCode}</p>
           </div>
         </div>
@@ -1616,7 +1756,11 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                       </div>
                     </div>
                     <p className="text-[9px] text-gray-400 mb-3 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
-                    {b.image && <img src={b.image} className="w-full rounded-[24px] shadow-lg" />}
+                    {b.image && (
+                      <div className="w-full flex justify-center">
+                        <img src={b.image} className="w-full max-h-[500px] object-cover rounded-[24px] shadow-lg" alt="voucher" />
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center">
@@ -1841,9 +1985,38 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         {activeTab === '日誌' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
-                <textarea value={newJournal.content} onChange={e=>setNewJournal({...newJournal, content:e.target.value})} placeholder="記錄此刻的心情..." className="w-full bg-gray-50 p-4 rounded-2xl mb-4 outline-none min-h-[100px] font-black text-black placeholder:text-gray-400 border border-gray-200" />
+                <textarea 
+                  value={newJournal.content} 
+                  onChange={e=>setNewJournal({...newJournal, content:e.target.value})} 
+                  placeholder="記錄此刻的心情..." 
+                  className="w-full bg-gray-50 p-4 rounded-2xl mb-3 outline-none min-h-[100px] font-black text-black placeholder:text-gray-400 border border-gray-200" 
+                />
+
+                {newJournal.image && (
+                  <div className="relative mb-3 inline-block">
+                    <img 
+                      src={newJournal.image} 
+                      alt="Thumbnail preview" 
+                      className="w-20 h-20 rounded-2xl object-cover border-2 border-[#5E9E8E] shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewJournal({ ...newJournal, image: '' })}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-black shadow-md hover:bg-red-600"
+                      title="移除此照片"
+                    >
+                      ✕
+                    </button>
+                    <span className="text-[9px] text-gray-400 block mt-1">已選取預覽</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between items-center">
-                    <ImageUploader label="上傳照片 (可縮放裁切)" maxDimension={800} onUpload={img => setNewJournal({...newJournal, image: img})} />
+                    <ImageUploader 
+                      label={newJournal.image ? "更換照片" : "上傳相片 (支援裁切)"} 
+                      maxDimension={800} 
+                      onUpload={img => setNewJournal({...newJournal, image: img})} 
+                    />
                     <button onClick={()=>{
                         if(!newJournal.content.trim()) return alert("請輸入日誌內容！");
                         const n: JournalEntry[] = [{id:Date.now(), authorId:user.id, content:newJournal.content.trim(), image:newJournal.image, date:new Date().toLocaleString(), lastUpdatedById: user.id}, ...journals];
@@ -1866,7 +2039,16 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           </div>
                       </div>
                       <p className="text-sm mb-4 leading-relaxed font-black text-gray-800">{j.content}</p>
-                      {j.image && <img src={j.image} className="w-full rounded-[24px] shadow-sm border border-gray-100" />}
+                      
+                      {j.image && (
+                        <div className="w-full flex justify-center mt-2 overflow-hidden rounded-[24px]">
+                          <img 
+                            src={j.image} 
+                            className="w-full max-h-[500px] object-cover rounded-[24px] shadow-sm border border-gray-100" 
+                            alt="journal visual"
+                          />
+                        </div>
+                      )}
                   </div>
               ))}
             </div>
@@ -1949,7 +2131,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
-            {/* 邀請代碼卡片 */}
             <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl p-5 text-white shadow-lg flex justify-between items-center">
               <div>
                 <p className="text-[10px] uppercase opacity-85 tracking-wider font-black">旅行邀請代碼 (SHARE TO FRIENDS)</p>
@@ -1968,7 +2149,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             </div>
 
             <div className="flex justify-between items-center mt-6 mb-2">
-              <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Trip Members ({currentMemberIds.length})</h3>
+              <h3 className="text-[#5E9E8E] italic uppercase text-xs font-black tracking-widest">Trip Members ({currentMemberIds.length})</h3>
             </div>
 
             {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
@@ -2111,7 +2292,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 行程編輯彈窗 */}
+      {/* 行程景點編輯彈窗 */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black">
@@ -2224,9 +2405,9 @@ export default function AppEntry() {
         account: m.account || m.loginCode || m.id
       }));
       setAllMembers(formatted);
-      localStorage.setItem('app_members_v17', JSON.stringify(formatted));
+      localStorage.setItem('app_members_v19', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v17');
+      const cachedM = localStorage.getItem('app_members_v19');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -2235,7 +2416,7 @@ export default function AppEntry() {
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v17', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v19', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -2247,16 +2428,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v17', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v19', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v17');
+      const cachedT = localStorage.getItem('app_trips_v19');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v17', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v19', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -2264,21 +2445,21 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v17', nData.content);
+      localStorage.setItem('app_notice_v19', nData.content);
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v17', iData.content);
+      localStorage.setItem('app_login_icon_v19', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v17');
-    const localT = localStorage.getItem('app_trips_v17');
-    const localN = localStorage.getItem('app_notice_v17');
-    const localI = localStorage.getItem('app_login_icon_v17');
+    const localM = localStorage.getItem('app_members_v19');
+    const localT = localStorage.getItem('app_trips_v19');
+    const localN = localStorage.getItem('app_notice_v19');
+    const localI = localStorage.getItem('app_login_icon_v19');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -2287,7 +2468,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v17')
+      .channel('app-global-sync-v19')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -2296,19 +2477,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v17', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v19', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v17', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v19', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v17', p.content);
+              localStorage.setItem('app_notice_v19', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v17', p.content);
+              localStorage.setItem('app_login_icon_v19', p.content);
             }
           }
         }
@@ -2322,7 +2503,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v17', JSON.stringify(newM));
+    localStorage.setItem('app_members_v19', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2334,14 +2515,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v17', JSON.stringify(next));
+    localStorage.setItem('app_trips_v19', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v17', JSON.stringify(next));
+    localStorage.setItem('app_trips_v19', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2351,8 +2532,76 @@ export default function AppEntry() {
     if (selectedTrip && selectedTrip.id === updated.id) {
       setSelectedTrip(updated);
     }
-    localStorage.setItem('app_trips_v17', JSON.stringify(next));
+    localStorage.setItem('app_trips_v19', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
+  };
+
+  const handleUpdateTripWithMigration = async (updatedTrip: Trip, oldTrip: Trip) => {
+    await handleUpdateTrip(updatedTrip);
+
+    const datesChanged = updatedTrip.startDate !== oldTrip.startDate || updatedTrip.endDate !== oldTrip.endDate;
+    if (!datesChanged) return;
+
+    const oldDates = getDatesList(oldTrip.startDate, oldTrip.endDate);
+    const newDates = getDatesList(updatedTrip.startDate, updatedTrip.endDate);
+    const newLength = newDates.length;
+
+    const dateMapping: { [oldD: string]: string } = {};
+    oldDates.forEach((oldD, idx) => {
+      if (idx < newLength) {
+        dateMapping[oldD] = newDates[idx];
+      }
+    });
+
+    let currentContent: any = {};
+    const cached = localStorage.getItem(`trip_cache_${updatedTrip.id}`);
+    if (cached) {
+      try { currentContent = JSON.parse(cached); } catch(e){}
+    }
+    if (!currentContent.records && !currentContent.schedules) {
+      const { data } = await supabase.from('trips').select('content').eq('id', updatedTrip.id).single();
+      if (data?.content) currentContent = data.content;
+    }
+
+    const newSchedules: ScheduleData = {};
+    if (currentContent.schedules) {
+      for (let dayNum = 1; dayNum <= newLength; dayNum++) {
+        if (currentContent.schedules[dayNum]) {
+          newSchedules[dayNum] = currentContent.schedules[dayNum];
+        }
+      }
+    }
+
+    const newRecords = (currentContent.records || []).map((r: ExpenseRecord) => {
+      if (r.date.includes('(旅行外)')) return r;
+      if (dateMapping[r.date]) {
+        return { ...r, date: dateMapping[r.date] };
+      }
+      return { ...r, date: `${r.date} (旅行外)` };
+    });
+
+    const newFlights = (currentContent.flights || []).map((f: Flight) => {
+      if (dateMapping[f.date]) {
+        return { ...f, date: dateMapping[f.date] };
+      }
+      return { ...f, date: newDates[0] || f.date };
+    });
+
+    const newCityConfigs = (currentContent.cityConfigs || []).map((c: CityWeatherConfig) => ({
+      ...c,
+      dayIndexes: c.dayIndexes.filter(d => d <= newLength)
+    }));
+
+    const migratedContent = {
+      ...currentContent,
+      schedules: newSchedules,
+      records: newRecords,
+      flights: newFlights,
+      cityConfigs: newCityConfigs
+    };
+
+    localStorage.setItem(`trip_cache_${updatedTrip.id}`, JSON.stringify(migratedContent));
+    await supabase.from('trips').upsert({ id: updatedTrip.id, content: migratedContent });
   };
 
   const handleJoinTrip = async (code: string) => {
@@ -2373,7 +2622,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v17', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v19', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2381,13 +2630,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v17', n);
+    localStorage.setItem('app_notice_v19', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v17', icon);
+    localStorage.setItem('app_login_icon_v19', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
@@ -2419,6 +2668,7 @@ export default function AppEntry() {
       onAddTrip={handleAddTrip} 
       onDeleteTrip={handleDeleteTrip} 
       onUpdateTrip={handleUpdateTrip}
+      onUpdateTripWithMigration={handleUpdateTripWithMigration}
       onUpdateMembers={handleUpdateMembers} 
       onUpdateUser={setUser}
       notice={notice}
