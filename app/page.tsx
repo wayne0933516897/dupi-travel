@@ -22,7 +22,6 @@ interface ExpenseRecord { id: number; category: string; amount: string; currency
 interface Plan { id: number; time: string; title: string; desc: string; icon: string; lastUpdatedById?: string; }
 interface TodoItem { id: number; task: string; note?: string; assigneeIds: string[]; completedAssigneeIds: string[]; category: string; lastUpdatedById?: string; }
 
-// 💥 日誌留言型別定義
 interface JournalComment {
   id: number;
   authorId: string;
@@ -30,7 +29,6 @@ interface JournalComment {
   date: string;
 }
 
-// 💥 日誌型別（擴充按讚 likes 與留言 comments）
 interface JournalEntry { 
   id: number; 
   authorId: string; 
@@ -38,8 +36,8 @@ interface JournalEntry {
   date: string; 
   image?: string; 
   lastUpdatedById?: string;
-  likes?: string[]; // 存放按讚成員的 id 清單
-  comments?: JournalComment[]; // 存放留言清單
+  likes?: string[];
+  comments?: JournalComment[];
 }
 
 interface Flight { id: number; airline: string; flightNo: string; fromCode: string; toCode: string; depTime: string; arrTime: string; duration: string; date: string; baggage: string; aircraft: string; lastUpdatedById?: string; }
@@ -117,7 +115,6 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
-// 互動式圖片調整與裁切元件
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -1233,7 +1230,7 @@ function TripSelector({
   );
 }
 
-// 3. 主程式元件（💥 整合日誌按讚與留言串功能）
+// 3. 主程式元件
 function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
@@ -1257,7 +1254,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [bookings, setBookings] = useState<BookingDoc[]>([]);
   const [cityConfigs, setCityConfigs] = useState<CityWeatherConfig[]>([]);
 
-  // 💥 留言狀態：記錄每篇展開的留言串以及輸入框文字
   const [expandedComments, setExpandedComments] = useState<{ [journalId: number]: boolean }>({});
   const [commentInputs, setCommentInputs] = useState<{ [journalId: number]: string }>({});
 
@@ -1537,7 +1533,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return records.filter(r => filterPayerIds.includes(r.payerId));
   }, [records, filterPayerIds]);
 
-  // 💥 按讚切換邏輯
   const handleToggleLike = (journalId: number) => {
     const nextJournals = journals.map(j => {
       if (j.id !== journalId) return j;
@@ -1552,7 +1547,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     sync({ journals: nextJournals });
   };
 
-  // 💥 新增留言邏輯
   const handleAddComment = (journalId: number) => {
     const text = (commentInputs[journalId] || '').trim();
     if (!text) return alert("請輸入留言內容！");
@@ -1575,7 +1569,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     setCommentInputs({ ...commentInputs, [journalId]: '' });
   };
 
-  // 💥 刪除留言邏輯 (本人或 Wayne 可刪)
   const handleDeleteComment = (journalId: number, commentId: number) => {
     if (!confirm("確定要刪除此留言嗎？")) return;
     const nextJournals = journals.map(j => {
@@ -1613,7 +1606,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         {/* --- [Tab: 行程] --- */}
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
-            {/* 天氣看板 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
@@ -1652,7 +1644,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 )}
             </div>
 
-            {/* 展開之城市與排程編輯器 */}
             {showCityEditor && (
               <div className="bg-white p-5 rounded-[28px] mb-6 shadow-sm border border-gray-100 animate-in slide-in-from-top-3">
                 <div className="flex justify-between items-center mb-4">
@@ -1736,7 +1727,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               </div>
             )}
             
-            {/* 動態日期切換按鈕列 */}
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                 {dynamicTripDates.map((dateStr, idx) => {
                   const d = idx + 1;
@@ -1749,7 +1739,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 })}
             </div>
 
-            {/* 行程景點項目 */}
             <div className="mt-8 space-y-8 relative">
                 <div className="absolute left-[19px] top-0 bottom-0 w-0.5 border-dashed border-l border-gray-200"></div>
                 {(schedules[activeDay]||[]).sort((a,b)=>a.time.localeCompare(b.time)).map(item=>(
@@ -2057,7 +2046,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
 
-        {/* --- [Tab: 日誌]（💥 完整整合：按讚 ❤️ 與留言串 💬） --- */}
+        {/* --- [Tab: 日誌] --- */}
         {activeTab === '日誌' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
@@ -2148,55 +2137,52 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         </div>
                       )}
 
-                      {/* 💥 互動工具列：按讚 ❤️ 與 留言按鈕 💬 */}
-                      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-50">
-                        {/* 愛心按讚按鈕 */}
+                      {/* 按讚與留言列 */}
+                      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
                         <button
                           type="button"
                           onClick={() => handleToggleLike(j.id)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-90 ${hasLiked ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-90 ${hasLiked ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
                         >
                           <span className="text-sm">{hasLiked ? '❤️' : '🤍'}</span>
                           <span>{likes.length > 0 ? likes.length : '讚'}</span>
                         </button>
 
-                        {/* 留言展開按鈕 */}
                         <button
                           type="button"
                           onClick={() => setExpandedComments({ ...expandedComments, [j.id]: !isCommentsOpen })}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all ${isCommentsOpen ? 'bg-[#5E9E8E] text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all ${isCommentsOpen ? 'bg-[#5E9E8E] text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
                         >
                           <span className="text-sm">💬</span>
                           <span>{comments.length > 0 ? `${comments.length} 則留言` : '留言'}</span>
                         </button>
                       </div>
 
-                      {/* 💥 展開的留言串區塊 */}
+                      {/* 留言區塊 */}
                       {isCommentsOpen && (
-                        <div className="mt-4 pt-3 border-t border-dashed border-gray-100 space-y-3 animate-in fade-in">
-                          {/* 留言清單 */}
+                        <div className="mt-4 pt-3 border-t border-dashed border-gray-200 space-y-3 animate-in fade-in">
                           {comments.length === 0 ? (
-                            <p className="text-[10px] text-gray-300 italic py-1">目前尚無留言，來搶頭香吧～</p>
+                            <p className="text-[10px] text-gray-400 italic py-1">目前尚無留言，來留第一則吧～</p>
                           ) : (
                             <div className="space-y-2.5">
                               {comments.map(c => {
                                 const cAuthor = getMember(c.authorId);
                                 const canDeleteComment = c.authorId === user.id || isWayne;
                                 return (
-                                  <div key={c.id} className="flex items-start gap-2.5 bg-gray-50 p-3 rounded-2xl">
+                                  <div key={c.id} className="flex items-start gap-2.5 bg-gray-50 p-3 rounded-2xl border border-gray-100">
                                     <img src={cAuthor.avatar} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
                                     <div className="flex-1">
                                       <div className="flex items-center justify-between">
                                         <span className="text-[11px] font-black text-black">{cAuthor.name}</span>
-                                        <span className="text-[9px] text-gray-300 font-mono">{c.date}</span>
+                                        <span className="text-[9px] text-gray-400 font-mono">{c.date}</span>
                                       </div>
-                                      <p className="text-xs text-gray-700 mt-0.5 leading-relaxed font-normal">{c.content}</p>
+                                      <p className="text-xs text-gray-800 mt-0.5 leading-relaxed font-normal">{c.content}</p>
                                     </div>
                                     {canDeleteComment && (
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteComment(j.id, c.id)}
-                                        className="text-[10px] text-gray-300 hover:text-red-500 ml-1"
+                                        className="text-[10px] text-gray-400 hover:text-red-500 ml-1 font-black"
                                         title="刪除留言"
                                       >
                                         ✕
@@ -2208,7 +2194,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             </div>
                           )}
 
-                          {/* 留言輸入發布框 */}
                           <div className="flex gap-2 items-center pt-2">
                             <input
                               type="text"
@@ -2468,7 +2453,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                   onUpdateUser(finalMember);
                 }
 
-                sync({});
                 alert("✅ 修改成功！");
                 setEditingMemberModal(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">儲存成員</button>
