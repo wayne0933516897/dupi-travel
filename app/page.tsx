@@ -115,6 +115,22 @@ function getDateObj(startStr: string, dayIndex: number): Date {
   return target;
 }
 
+// 智慧地標搜尋輔助：根據地名自動配對適合的 Emoji
+function detectPlaceIcon(name: string): string {
+  if (/機場|飛機|airport|flight/i.test(name)) return '✈️';
+  if (/飯店|酒店|旅館|hotel|inn|hostel/i.test(name)) return '🏨';
+  if (/拉麵|壽司|料理|餐廳|食|餐|咖啡|甜點|肉|居酒屋|cafe|food/i.test(name)) return '🍜';
+  if (/神社|寺|宮|大社|鳥居/i.test(name)) return '⛩️';
+  if (/塔|tower|晴空塔|展望台|skytree/i.test(name)) return '🗼';
+  if (/樂園|迪士尼|環球|影城|動物園|公園|park/i.test(name)) return '🎡';
+  if (/站|車站|地鐵|JR|station/i.test(name)) return '🚉';
+  if (/溫泉|湯|spa/i.test(name)) return '♨️';
+  if (/山|岳|峰|谷/i.test(name)) return '🗻';
+  if (/海|灘|島|港|beach/i.test(name)) return '🏖️';
+  if (/購物|百貨|市場|商場|outlet|mall/i.test(name)) return '🛍️';
+  return '📍';
+}
+
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -1219,7 +1235,7 @@ function TripSelector({
                   onUpdateUser(finalMember);
                 }
 
-                alert("✅ 資料修改成功！");
+                alert("✅ 修改成功！");
                 setEditingMember(null);
               }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Save</button>
             </div>
@@ -1280,6 +1296,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   }, [records, schedules, todos, journals, flights, bookings, cityConfigs]);
 
   const [newCityName, setNewCityName] = useState('');
+  const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
   const [showCityEditor, setShowCityEditor] = useState(false);
 
   const [weatherStatus, setWeatherStatus] = useState<{
@@ -1323,8 +1340,11 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
 
+  // 💥 行程景點編輯狀態（包含自動補全地標候選）
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
+  const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ title: string; subtitle: string; icon: string }>>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
 
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' });
@@ -1503,6 +1523,67 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
+  // 💥 智慧地標搜尋自動補全邏輯（避免打錯字）
+  useEffect(() => {
+    const query = planForm.title.trim();
+    if (query.length < 2) {
+      setPlaceSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=zh&format=json`);
+        const data = await res.json();
+        if (data.results && Array.isArray(data.results)) {
+          const formatted = data.results.map((r: any) => {
+            const locDetails = [r.admin1, r.country].filter(Boolean).join(', ');
+            return {
+              title: r.name,
+              subtitle: locDetails || '地點',
+              icon: detectPlaceIcon(r.name)
+            };
+          });
+          setPlaceSuggestions(formatted);
+        } else {
+          setPlaceSuggestions([]);
+        }
+      } catch (e) {
+        setPlaceSuggestions([]);
+      } finally {
+        setIsSearchingPlaces(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [planForm.title]);
+
+  // 💥 城市天氣自動補全搜尋
+  useEffect(() => {
+    const q = newCityName.trim();
+    if (q.length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=zh&format=json`);
+        const data = await res.json();
+        if (data.results && Array.isArray(data.results)) {
+          setCitySuggestions(data.results.map((r: any) => r.name));
+        } else {
+          setCitySuggestions([]);
+        }
+      } catch (e) {
+        setCitySuggestions([]);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [newCityName]);
+
   const sync = async (update: any) => {
     const full = { ...stateRef.current, ...update };
     stateRef.current = full;
@@ -1648,7 +1729,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               <div className="bg-white p-5 rounded-[28px] mb-6 shadow-sm border border-gray-100 animate-in slide-in-from-top-3">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider font-black">🏙️ 城市與天氣排程</h4>
-                  <div className="flex gap-2">
+                  <div className="relative flex gap-2">
                     <input 
                       placeholder="輸入城市 (如: 台北、大阪)..." 
                       value={newCityName} 
@@ -1662,11 +1743,30 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         setCityConfigs(next);
                         sync({ cityConfigs: next });
                         setNewCityName('');
+                        setCitySuggestions([]);
                       }}
                       className="bg-[#5E9E8E] text-white text-[10px] px-3 py-2 rounded-xl shadow-sm active:scale-95 font-black"
                     >
                       + 新增
                     </button>
+
+                    {/* 城市候選下拉選單 */}
+                    {citySuggestions.length > 0 && (
+                      <div className="absolute top-11 left-0 right-14 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
+                        {citySuggestions.map((cityName, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setNewCityName(cityName);
+                              setCitySuggestions([]);
+                            }}
+                            className="p-2.5 text-xs text-black font-black hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-b-0 flex items-center gap-1.5"
+                          >
+                            <span>🏙️</span> {cityName}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1758,7 +1858,16 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                             </div>
                             <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black">{item.desc}</p>
                             <div className="mt-4 flex justify-between items-center">
-                                <button onClick={(e) => { e.stopPropagation(); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`, '_blank'); }} className="text-[10px] bg-gray-50 text-[#5E9E8E] px-3 py-1.5 rounded-full font-black shadow-inner active:scale-95">📍 GOOGLE MAP</button>
+                                {/* 💥 核心修正：使用 window.location.href 直接喚起 Google Maps App，不留空白分頁 */}
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    window.location.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`;
+                                  }} 
+                                  className="text-[10px] bg-gray-50 text-[#5E9E8E] px-3 py-1.5 rounded-full font-black shadow-inner active:scale-95"
+                                >
+                                  📍 GOOGLE MAP
+                                </button>
                                 <div className="flex gap-3 z-20">
                                     <button onClick={(e)=>{e.stopPropagation(); setPlanForm(item); setShowPlanModal({show:true,type:'edit',data:item});}} className="text-xs text-blue-400 bg-blue-50 p-2 rounded-xl active:scale-90 transition-transform">🖋️</button>
                                     <button onClick={(e)=>{e.stopPropagation(); if(confirm('確定刪除此行程？')){const n=(schedules[activeDay]||[]).filter(p=>p.id!==item.id); const up={...schedules,[activeDay]:n}; setSchedules(up); sync({schedules:up});}}} className="text-xs text-red-400 bg-red-50 p-2 rounded-xl active:scale-90 transition-transform">🗑️</button>
@@ -1767,7 +1876,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         </div>
                     </div>
                 ))}
-                <button onClick={()=> setShowPlanModal({show:true,type:'add'})} className="ml-14 w-[calc(100%-3.5rem)] py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-black active:bg-gray-50">+ ADD NEW STOP</button>
+                <button onClick={()=> { setPlanForm({time:'09:00', title:'', desc:'', icon:'📍'}); setPlaceSuggestions([]); setShowPlanModal({show:true,type:'add'}); }} className="ml-14 w-[calc(100%-3.5rem)] py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-black active:bg-gray-50">+ ADD NEW STOP</button>
             </div>
           </div>
         )}
@@ -2137,7 +2246,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         </div>
                       )}
 
-                      {/* 按讚與留言列 */}
                       <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
                         <button
                           type="button"
@@ -2158,7 +2266,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         </button>
                       </div>
 
-                      {/* 留言區塊 */}
                       {isCommentsOpen && (
                         <div className="mt-4 pt-3 border-t border-dashed border-gray-200 space-y-3 animate-in fade-in">
                           {comments.length === 0 ? (
@@ -2461,23 +2568,71 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 行程景點編輯彈窗 */}
+      {/* 💥 行程景點編輯彈窗（含即時地標智慧搜尋建議選單） */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
-            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black">
-                <h3 className="text-2xl mb-8 italic text-[#5E9E8E] uppercase tracking-tighter">Edit Travel Stop</h3>
-                <div className="flex gap-3 mb-6 bg-gray-50 rounded-2xl p-2 shadow-inner border border-gray-200">
-                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
+            <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black max-h-[90vh] overflow-y-auto">
+                <h3 className="text-2xl mb-6 italic text-[#5E9E8E] uppercase tracking-tighter">Edit Travel Stop</h3>
+                
+                <div className="flex gap-3 mb-5 bg-gray-50 rounded-2xl p-2 shadow-inner border border-gray-200">
+                    <select className="flex-1 p-3.5 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[0]} onChange={e=>setPlanForm({...planForm,time:`${e.target.value}:${planForm.time.split(':')[1]}`})}>
                         {Array.from({length: 24}).map((_,i)=><option key={i} value={i.toString().padStart(2,'0')}>{i.toString().padStart(2,'0')} 點</option>)}
                     </select>
-                    <select className="flex-1 p-4 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[1]} onChange={e=>setPlanForm({...planForm,time:`${planForm.time.split(':')[0]}:${e.target.value}`})}>
+                    <select className="flex-1 p-3.5 bg-transparent outline-none text-xl font-black text-black" value={planForm.time.split(':')[1]} onChange={e=>setPlanForm({...planForm,time:`${planForm.time.split(':')[0]}:${e.target.value}`})}>
                         {['00','10','20','30','40','50'].map(m=><option key={m} value={m}>{m} 分</option>)}
                     </select>
                 </div>
-                <input placeholder="要去哪裡？" value={planForm.title} onChange={e=>setPlanForm({...planForm,title:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-4 outline-none text-xl border border-gray-200 font-black text-black placeholder:text-gray-400" />
-                <textarea placeholder="備註或細節..." value={planForm.desc} onChange={e=>setPlanForm({...planForm,desc:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-8 outline-none text-sm h-32 leading-relaxed border border-gray-200 font-black text-black placeholder:text-gray-400" />
+
+                {/* 地標搜尋輸入框與下拉建議 */}
+                <div className="relative mb-4">
+                  <div className="flex items-center gap-2 bg-gray-50 p-2 px-4 rounded-[28px] border border-gray-200">
+                    <span className="text-2xl">{planForm.icon || '📍'}</span>
+                    <input 
+                      placeholder="要去哪裡？(輸入地標名稱自動帶出)..." 
+                      value={planForm.title} 
+                      onChange={e => {
+                        const val = e.target.value;
+                        setPlanForm({ ...planForm, title: val, icon: detectPlaceIcon(val) });
+                      }} 
+                      className="w-full p-3 bg-transparent outline-none text-base font-black text-black placeholder:text-gray-400" 
+                    />
+                    {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
+                  </div>
+
+                  {/* 即時地標建議下拉清單 */}
+                  {placeSuggestions.length > 0 && (
+                    <div className="absolute top-16 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-emerald-100 z-50 overflow-hidden max-h-56 overflow-y-auto animate-in fade-in">
+                      <div className="p-2 px-4 text-[10px] text-gray-400 bg-gray-50 border-b border-gray-100 font-black">
+                        💡 點選官方標準地標（避免導航錯誤）：
+                      </div>
+                      {placeSuggestions.map((place, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setPlanForm({
+                              ...planForm,
+                              title: place.title,
+                              icon: place.icon
+                            });
+                            setPlaceSuggestions([]);
+                          }}
+                          className="p-3.5 px-4 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-b-0 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="text-lg">{place.icon}</span>
+                            <span className="text-sm font-black text-black truncate">{place.title}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-normal shrink-0 ml-2">{place.subtitle}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <textarea placeholder="備註或細節..." value={planForm.desc} onChange={e=>setPlanForm({...planForm,desc:e.target.value})} className="w-full p-5 bg-gray-50 rounded-[28px] mb-8 outline-none text-sm h-28 leading-relaxed border border-gray-200 font-black text-black placeholder:text-gray-400" />
+                
                 <div className="flex gap-4">
-                    <button onClick={()=>setShowPlanModal({show:false,type:'add'})} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black uppercase">Cancel</button>
+                    <button onClick={()=>{ setShowPlanModal({show:false,type:'add'}); setPlaceSuggestions([]); }} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black uppercase">Cancel</button>
                     <button onClick={()=>{
                         if(!planForm.title.trim()) return alert("請輸入地點或活動標題！");
                         const dPlans = schedules[activeDay] || [];
@@ -2486,6 +2641,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                         const up = { ...schedules, [activeDay]: n };
                         setSchedules(up); sync({schedules:up}); 
                         setShowPlanModal({show:false,type:'add'}); 
+                        setPlaceSuggestions([]);
                         setPlanForm({time:'09:00', title:'', desc:'', icon:'📍'});
                     }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-xl italic uppercase font-black">Save Stop</button>
                 </div>
@@ -2574,9 +2730,9 @@ export default function AppEntry() {
         account: m.account || m.loginCode || m.id
       }));
       setAllMembers(formatted);
-      localStorage.setItem('app_members_v20', JSON.stringify(formatted));
+      localStorage.setItem('app_members_v21', JSON.stringify(formatted));
     } else {
-      const cachedM = localStorage.getItem('app_members_v20');
+      const cachedM = localStorage.getItem('app_members_v21');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
       } else {
@@ -2585,7 +2741,7 @@ export default function AppEntry() {
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
         ];
         setAllMembers(defaultM);
-        localStorage.setItem('app_members_v20', JSON.stringify(defaultM));
+        localStorage.setItem('app_members_v21', JSON.stringify(defaultM));
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
@@ -2597,16 +2753,16 @@ export default function AppEntry() {
         joinCode: t.joinCode || generateJoinCode([])
       }));
       setSelectedTrips(ensuredTrips);
-      localStorage.setItem('app_trips_v20', JSON.stringify(ensuredTrips));
+      localStorage.setItem('app_trips_v21', JSON.stringify(ensuredTrips));
     } else {
-      const cachedT = localStorage.getItem('app_trips_v20');
+      const cachedT = localStorage.getItem('app_trips_v21');
       if (cachedT) {
         setSelectedTrips(JSON.parse(cachedT));
       } else {
         const today = getTodayDateString();
         const defaultT: Trip[] = [{ id:'hokkaido2026', title:'2026 日本之旅', startDate: today, endDate: today, emoji:'☃️', memberIds:['1','2'], joinCode: 'JP2026' }];
         setSelectedTrips(defaultT);
-        localStorage.setItem('app_trips_v20', JSON.stringify(defaultT));
+        localStorage.setItem('app_trips_v21', JSON.stringify(defaultT));
         await supabase.from('trips').upsert({ id: '__app_trips__', content: defaultT });
       }
     }
@@ -2614,21 +2770,21 @@ export default function AppEntry() {
     const { data: nData } = await supabase.from('trips').select('content').eq('id', '__app_notice__').single();
     if (nData?.content && typeof nData.content === 'string') {
       setNotice(nData.content);
-      localStorage.setItem('app_notice_v20', nData.content);
+      localStorage.setItem('app_notice_v21', nData.content);
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
     if (iData?.content && typeof iData.content === 'string') {
       setLoginIcon(iData.content);
-      localStorage.setItem('app_login_icon_v20', iData.content);
+      localStorage.setItem('app_login_icon_v21', iData.content);
     }
   };
 
   useEffect(() => {
-    const localM = localStorage.getItem('app_members_v20');
-    const localT = localStorage.getItem('app_trips_v20');
-    const localN = localStorage.getItem('app_notice_v20');
-    const localI = localStorage.getItem('app_login_icon_v20');
+    const localM = localStorage.getItem('app_members_v21');
+    const localT = localStorage.getItem('app_trips_v21');
+    const localN = localStorage.getItem('app_notice_v21');
+    const localI = localStorage.getItem('app_login_icon_v21');
     if (localM) setAllMembers(JSON.parse(localM));
     if (localT) setSelectedTrips(JSON.parse(localT));
     if (localN) setNotice(localN);
@@ -2637,7 +2793,7 @@ export default function AppEntry() {
     fetchCloudData();
 
     const appChannel = supabase
-      .channel('app-global-sync-v20')
+      .channel('app-global-sync-v21')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'trips', filter: 'id=in.(__app_members__,__app_trips__,__app_notice__,__app_login_icon__)' },
@@ -2646,19 +2802,19 @@ export default function AppEntry() {
             const p = payload.new as any;
             if (p.id === '__app_members__' && Array.isArray(p.content)) {
               setAllMembers(p.content);
-              localStorage.setItem('app_members_v20', JSON.stringify(p.content));
+              localStorage.setItem('app_members_v21', JSON.stringify(p.content));
             }
             if (p.id === '__app_trips__' && Array.isArray(p.content)) {
               setSelectedTrips(p.content);
-              localStorage.setItem('app_trips_v20', JSON.stringify(p.content));
+              localStorage.setItem('app_trips_v21', JSON.stringify(p.content));
             }
             if (p.id === '__app_notice__' && typeof p.content === 'string') {
               setNotice(p.content);
-              localStorage.setItem('app_notice_v20', p.content);
+              localStorage.setItem('app_notice_v21', p.content);
             }
             if (p.id === '__app_login_icon__' && typeof p.content === 'string') {
               setLoginIcon(p.content);
-              localStorage.setItem('app_login_icon_v20', p.content);
+              localStorage.setItem('app_login_icon_v21', p.content);
             }
           }
         }
@@ -2672,7 +2828,7 @@ export default function AppEntry() {
 
   const handleUpdateMembers = async (newM: Member[]) => {
     setAllMembers(newM);
-    localStorage.setItem('app_members_v20', JSON.stringify(newM));
+    localStorage.setItem('app_members_v21', JSON.stringify(newM));
     await supabase.from('trips').upsert({ id: '__app_members__', content: newM });
   };
 
@@ -2684,14 +2840,14 @@ export default function AppEntry() {
   const handleAddTrip = async (t: Trip) => {
     const next = [...selectedTrips, t];
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v20', JSON.stringify(next));
+    localStorage.setItem('app_trips_v21', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
   const handleDeleteTrip = async (id: string) => {
     const next = selectedTrips.filter(t => t.id !== id);
     setSelectedTrips(next);
-    localStorage.setItem('app_trips_v20', JSON.stringify(next));
+    localStorage.setItem('app_trips_v21', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2701,7 +2857,7 @@ export default function AppEntry() {
     if (selectedTrip && selectedTrip.id === updated.id) {
       setSelectedTrip(updated);
     }
-    localStorage.setItem('app_trips_v20', JSON.stringify(next));
+    localStorage.setItem('app_trips_v21', JSON.stringify(next));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: next });
   };
 
@@ -2791,7 +2947,7 @@ export default function AppEntry() {
 
     const nextTrips = selectedTrips.map(t => t.id === target.id ? updatedTrip : t);
     setSelectedTrips(nextTrips);
-    localStorage.setItem('app_trips_v20', JSON.stringify(nextTrips));
+    localStorage.setItem('app_trips_v21', JSON.stringify(nextTrips));
     await supabase.from('trips').upsert({ id: '__app_trips__', content: nextTrips });
 
     alert(`🎉 成功加入旅行：【${target.title}】！`);
@@ -2799,13 +2955,13 @@ export default function AppEntry() {
 
   const handleUpdateNotice = async (n: string) => {
     setNotice(n);
-    localStorage.setItem('app_notice_v20', n);
+    localStorage.setItem('app_notice_v21', n);
     await supabase.from('trips').upsert({ id: '__app_notice__', content: n });
   };
 
   const handleUpdateLoginIcon = async (icon: string) => {
     setLoginIcon(icon);
-    localStorage.setItem('app_login_icon_v20', icon);
+    localStorage.setItem('app_login_icon_v21', icon);
     await supabase.from('trips').upsert({ id: '__app_login_icon__', content: icon });
   };
 
