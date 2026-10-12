@@ -31,12 +31,13 @@ interface ExpenseRecord {
   note?: string;
   lastUpdatedById?: string;
   // 代墊相關欄位
-  isAdvance?: boolean;                 // 是否為代墊款
-  advanceTargetType?: 'member' | 'other'; // 代墊對象：旅伴或外人
-  advanceMemberId?: string;            // 代墊對象旅伴 ID
-  advanceOtherNote?: string;           // 代墊對象其他備註
-  isSettled?: boolean;                 // 是否已結清
-  originalPayerId?: string;            // 原始先掏錢的付款人
+  isAdvance?: boolean;
+  advanceTargetType?: 'member' | 'other';
+  advanceMemberId?: string;
+  advanceOtherPerson?: string; // 幫其他人：對象名稱
+  advanceOtherNote?: string;   // 幫其他人：備註說明
+  isSettled?: boolean;
+  originalPayerId?: string;
 }
 
 interface Plan {
@@ -241,7 +242,6 @@ function compressVideoFile(file: File, maxDurationSec = 15): Promise<string> {
   });
 }
 
-// 💥 升級版圖片上傳元件：支援 1:1 大頭貼模式（Cover 填滿 + 邊界鎖定無黑邊）與自適應長圖模式
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -476,7 +476,7 @@ function ImageUploader({
 
             <div className="w-full mt-4 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                <span>原尺寸 (1.0x)</span>
+                <span>原比例 (1.0x)</span>
                 <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
                 <span>放大 (3.0x)</span>
               </div>
@@ -1510,7 +1510,6 @@ function MainApp({
   const [voucherSubTab, setVoucherSubTab] = useState<'未使用' | '已使用'>('未使用');
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   
-  // 💥 查帳篩選：成員（預設空陣列代表全部成員）與日期（預設空陣列代表全部日期）
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
   const [filterDates, setFilterDates] = useState<string[]>([]);
 
@@ -1581,11 +1580,52 @@ function MainApp({
   const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
-  // 💥 記帳代墊狀態
-  const [isAdvanceMode, setIsAdvanceMode] = useState(false);
+  // 💥 記帳代墊獨立大彈窗 Modal 相關狀態
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [isAdvanceConfigured, setIsAdvanceConfigured] = useState(false);
   const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
   const [advanceMemberId, setAdvanceMemberId] = useState<string>('');
+  const [advanceOtherPerson, setAdvanceOtherPerson] = useState('');
   const [advanceOtherNote, setAdvanceOtherNote] = useState('');
+
+  // 彈窗內部暫存狀態（供「取消/保存」切換使用）
+  const [tempAdvType, setTempAdvType] = useState<'member' | 'other'>('member');
+  const [tempAdvMemberId, setTempAdvMemberId] = useState<string>('');
+  const [tempAdvOtherPerson, setTempAdvOtherPerson] = useState('');
+  const [tempAdvOtherNote, setTempAdvOtherNote] = useState('');
+
+  // 💥 排除自己：旅伴代墊名單中絕不出現當前的付款人
+  const otherTripMembers = useMemo(() => {
+    return allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
+  }, [allMembers, currentMemberIds, expensePayerId]);
+
+  // 開啟代墊大彈窗時帶入目前狀態
+  const handleOpenAdvanceModal = () => {
+    setTempAdvType(advanceTargetType);
+    setTempAdvMemberId(advanceMemberId || (otherTripMembers[0]?.id || ''));
+    setTempAdvOtherPerson(advanceOtherPerson);
+    setTempAdvOtherNote(advanceOtherNote);
+    setShowAdvanceModal(true);
+  };
+
+  // 儲存代墊大彈窗設定
+  const handleSaveAdvanceModal = () => {
+    if (tempAdvType === 'member') {
+      if (!tempAdvMemberId) {
+        return alert("請選擇代墊對象旅伴！若只有自己一人，可切換為「幫其他人」。");
+      }
+      setAdvanceMemberId(tempAdvMemberId);
+    } else {
+      if (!tempAdvOtherPerson.trim()) {
+        return alert("請輸入代墊對象名稱或點選快速標籤（如：家人、同事）！");
+      }
+      setAdvanceOtherPerson(tempAdvOtherPerson.trim());
+      setAdvanceOtherNote(tempAdvOtherNote.trim());
+    }
+    setAdvanceTargetType(tempAdvType);
+    setIsAdvanceConfigured(true);
+    setShowAdvanceModal(false);
+  };
 
   // 日誌多圖與短影片輸入狀態
   const [newJournalContent, setNewJournalContent] = useState('');
@@ -1699,7 +1739,6 @@ function MainApp({
     });
   }, [flights]);
 
-  // 💥 篩選邏輯：同時過濾「選取成員」與「選取日期」
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       const matchPayer = filterPayerIds.length === 0 || filterPayerIds.includes(r.payerId);
@@ -1709,7 +1748,6 @@ function MainApp({
     });
   }, [records, filterPayerIds, filterDates]);
 
-  // 💥 查帳統計核心計算（扣除已結清之代墊外部款項）
   const expenseStats = useMemo(() => {
     let totalTwd = 0;
     const categoryTotals: { [cat: string]: number } = {};
@@ -1720,7 +1758,6 @@ function MainApp({
       const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
       const amountNum = Number(r.twdAmount || 0);
 
-      // 若為幫外人代墊且已結清收回，不計入實質總支出
       if (!isSettledOther) {
         totalTwd += amountNum;
         const c = r.category || '其他';
@@ -1735,7 +1772,6 @@ function MainApp({
       dateGroups[dName].push(r);
     });
 
-    // 圓餅圖（分類佔比）
     const palette = ['#5E9E8E', '#E9C46A', '#E76F51', '#2A9D8F', '#F4A261', '#457B9D', '#A8DADC', '#6D6875'];
     let accumulated = 0;
     const slices = Object.entries(categoryTotals).map(([cat, val], idx) => {
@@ -1753,7 +1789,6 @@ function MainApp({
       };
     });
 
-    // 長條圖（多人花費對比）
     const maxMemberVal = Math.max(...Object.values(memberTotals), 1);
     const memberBars = Object.entries(memberTotals).map(([mId, val]) => {
       const pct = totalTwd > 0 ? (val / totalTwd) * 100 : 0;
@@ -1769,7 +1804,6 @@ function MainApp({
     return { totalTwd, categoryTotals, dateGroups, slices, memberBars };
   }, [filteredRecords, dynamicTripDates]);
 
-  // 💥 結清代墊款處理函式
   const handleSettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -1784,7 +1818,7 @@ function MainApp({
           ...r,
           isSettled: true,
           originalPayerId: r.payerId,
-          payerId: r.advanceMemberId || r.payerId, // 轉移給該旅伴
+          payerId: r.advanceMemberId || r.payerId,
           lastUpdatedById: user.id
         };
       });
@@ -1804,7 +1838,7 @@ function MainApp({
       });
       setRecords(next);
       sync({ records: next });
-      alert("✅ 已標記外部代墊結清，款項已從實質總支出中扣除！");
+      alert("✅ 已標記代墊結清，款項已從實質總支出中扣除！");
     }
   };
 
@@ -2341,82 +2375,41 @@ function MainApp({
                       ))}
                     </div>
 
-                    {/* 💥 記帳功能代墊按鈕區塊 */}
-                    <div className="mb-6 p-4 rounded-2xl border transition-all bg-gray-50/70 border-gray-200">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🤝</span>
-                          <div>
-                            <p className="text-xs font-black">幫人代墊款項</p>
-                            <p className="text-[9px] text-gray-400 font-normal">若為替旅伴或外人代買請開啟此項</p>
-                          </div>
+                    {/* 💥 精簡首頁：代墊設定按鈕（點選開啟獨立大視窗彈窗） */}
+                    <div className="mb-6">
+                      <button
+                        type="button"
+                        onClick={handleOpenAdvanceModal}
+                        className={`w-full p-3.5 rounded-2xl flex items-center justify-between transition-all border font-black active:scale-98 ${
+                          isAdvanceConfigured
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-md'
+                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg">🤝</span>
+                          <span className="text-xs">
+                            {isAdvanceConfigured
+                              ? advanceTargetType === 'member'
+                                ? `已設定代墊：幫 ${getMember(advanceMemberId).name}`
+                                : `已設定代墊：幫 ${advanceOtherPerson}${advanceOtherNote ? ` (${advanceOtherNote})` : ''}`
+                              : '幫人代墊（點擊開啟大視窗設定）'}
+                          </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = !isAdvanceMode;
-                            setIsAdvanceMode(next);
-                            if (next && !advanceMemberId) {
-                              const otherMembers = allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
-                              if (otherMembers.length > 0) setAdvanceMemberId(otherMembers[0].id);
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isAdvanceMode ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-200 text-gray-600'}`}
-                        >
-                          {isAdvanceMode ? '已開啟代墊' : '一般記帳'}
-                        </button>
-                      </div>
-
-                      {isAdvanceMode && (
-                        <div className="mt-3 pt-3 border-t border-gray-200/80 space-y-3 animate-in fade-in">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setAdvanceTargetType('member')}
-                              className={`flex-1 py-1.5 rounded-xl text-xs font-black ${advanceTargetType === 'member' ? 'bg-[#5E9E8E] text-white shadow-xs' : 'bg-white text-gray-500 border border-gray-200'}`}
-                            >
-                              幫旅伴代墊
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAdvanceTargetType('other')}
-                              className={`flex-1 py-1.5 rounded-xl text-xs font-black ${advanceTargetType === 'other' ? 'bg-[#5E9E8E] text-white shadow-xs' : 'bg-white text-gray-500 border border-gray-200'}`}
-                            >
-                              幫其他人 (外人)
-                            </button>
-                          </div>
-
-                          {advanceTargetType === 'member' ? (
-                            <div>
-                              <p className="text-[10px] text-gray-500 mb-1 ml-1 font-black">選擇代墊對象 (旅伴)：</p>
-                              <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                                {allMembers.filter(m => currentMemberIds.includes(m.id)).map(m => (
-                                  <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => setAdvanceMemberId(m.id)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black shrink-0 transition-all ${advanceMemberId === m.id ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'}`}
-                                  >
-                                    <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
-                                    <span>{m.name}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="text-[10px] text-gray-500 mb-1 ml-1 font-black">外人代墊說明 (誰託買/事由)：</p>
-                              <input
-                                type="text"
-                                value={advanceOtherNote}
-                                onChange={e => setAdvanceOtherNote(e.target.value)}
-                                placeholder="例如: 同事託買合利他命、朋友公仔"
-                                className="w-full p-2.5 px-3 bg-white rounded-xl text-xs font-black text-black border border-gray-200 outline-none"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
+                        {isAdvanceConfigured ? (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsAdvanceConfigured(false);
+                            }}
+                            className="bg-black/20 hover:bg-black/40 text-white text-[10px] px-2.5 py-1 rounded-lg"
+                          >
+                            ✕ 取消代墊
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">＋ 設定</span>
+                        )}
+                      </button>
                     </div>
 
                     <button onClick={()=>{
@@ -2424,7 +2417,6 @@ function MainApp({
                         if(!amount || Number(amount) <= 0) return alert("金額必須大於 0，不能為負數或空白！");
                         if(!payMethod) return alert("❌ 請選擇付款方式！");
                         if(!expensePayerId) return alert("請選擇付款人！");
-                        if(isAdvanceMode && advanceTargetType === 'member' && !advanceMemberId) return alert("請選擇代墊對象旅伴！");
 
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
                         const autoTimestamp = getNowTimestampString();
@@ -2440,10 +2432,11 @@ function MainApp({
                           date: autoTimestamp,
                           note: expenseNote.trim(),
                           lastUpdatedById: user.id,
-                          isAdvance: isAdvanceMode,
-                          advanceTargetType: isAdvanceMode ? advanceTargetType : undefined,
-                          advanceMemberId: isAdvanceMode && advanceTargetType === 'member' ? advanceMemberId : undefined,
-                          advanceOtherNote: isAdvanceMode && advanceTargetType === 'other' ? advanceOtherNote.trim() : undefined,
+                          isAdvance: isAdvanceConfigured,
+                          advanceTargetType: isAdvanceConfigured ? advanceTargetType : undefined,
+                          advanceMemberId: isAdvanceConfigured && advanceTargetType === 'member' ? advanceMemberId : undefined,
+                          advanceOtherPerson: isAdvanceConfigured && advanceTargetType === 'other' ? advanceOtherPerson : undefined,
+                          advanceOtherNote: isAdvanceConfigured && advanceTargetType === 'other' ? advanceOtherNote : undefined,
                           isSettled: false,
                           originalPayerId: expensePayerId
                         };
@@ -2456,8 +2449,7 @@ function MainApp({
                         setCategory(''); 
                         setExpenseNote('');
                         setPayMethod('');
-                        setIsAdvanceMode(false);
-                        setAdvanceOtherNote('');
+                        setIsAdvanceConfigured(false);
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
 
@@ -2477,11 +2469,11 @@ function MainApp({
                                     {r.isAdvance && (
                                       r.isSettled ? (
                                         <span className="text-[8px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                                          ✓ 已結清 {r.advanceTargetType === 'member' ? `(轉為 ${getMember(r.advanceMemberId).name} 支出)` : `(外部已收訖)`}
+                                          ✓ 已結清 {r.advanceTargetType === 'member' ? `(轉為 ${getMember(r.advanceMemberId).name} 支出)` : `(已收訖)`}
                                         </span>
                                       ) : (
                                         <span className="text-[8px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                                          ⏳ 待結清 {r.advanceTargetType === 'member' ? `(代墊給 ${getMember(r.advanceMemberId).name})` : `(代墊其他: ${r.advanceOtherNote || '外人'})`}
+                                          ⏳ 待結清 {r.advanceTargetType === 'member' ? `(代墊給 ${getMember(r.advanceMemberId).name})` : `(代墊給 ${r.advanceOtherPerson || '其他人'}${r.advanceOtherNote ? ` - ${r.advanceOtherNote}` : ''})`}
                                         </span>
                                       )
                                     )}
@@ -2492,7 +2484,6 @@ function MainApp({
                                     {r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})
                                   </p>
 
-                                  {/* 結清按鈕 */}
                                   {r.isAdvance && !r.isSettled && (
                                     <button
                                       type="button"
@@ -2521,7 +2512,6 @@ function MainApp({
             ) : (
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                  {/* 成員篩選列 */}
                   <div className="mb-4">
                     <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">👥 選擇成員查帳 (複選可看多人對比)</h4>
                     <div className="flex flex-wrap gap-2">
@@ -2550,7 +2540,6 @@ function MainApp({
                     </div>
                   </div>
 
-                  {/* 💥 日期篩選列（單選/複選） */}
                   <div className="mb-6 pt-3 border-t border-gray-100">
                     <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">📅 行程日期篩選 (可單選或多選)</h4>
                     <div className="flex flex-wrap gap-2">
@@ -2578,7 +2567,6 @@ function MainApp({
                     </div>
                   </div>
 
-                  {/* 統計總額卡片 */}
                   <div className="bg-[#5E9E8E]/10 p-5 rounded-2xl border border-[#5E9E8E]/20 mb-6 text-center">
                     <p className="text-xs opacity-70 uppercase font-black">篩選統計總額 (折合台幣)</p>
                     <h3 className="text-3xl font-mono mt-1 text-[#5E9E8E]">NT$ {expenseStats.totalTwd.toLocaleString()}</h3>
@@ -2587,7 +2575,6 @@ function MainApp({
                     </p>
                   </div>
 
-                  {/* 💥 圖表切換：選 2 人或以上顯示長條圖，否則顯示圓餅圖 */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                     {filterPayerIds.length >= 2 ? (
                       <div>
@@ -3197,6 +3184,149 @@ function MainApp({
           </div>
         )}
       </div>
+
+      {/* 💥 獨立大視窗彈窗：幫人代墊款項設定 Modal */}
+      {showAdvanceModal && (
+        <div className="fixed inset-0 bg-black/80 z-[160] p-4 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-lg max-h-[90vh] p-7 rounded-[44px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🤝</span>
+                <div>
+                  <h3 className="text-lg font-black text-black">設定代墊款項</h3>
+                  <p className="text-[10px] text-gray-400 font-mono">幫旅伴或其他人代付，紀錄超清楚</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowAdvanceModal(false)}
+                className="w-9 h-9 bg-gray-100 text-gray-500 hover:text-black rounded-full flex items-center justify-center text-sm font-black"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1 space-y-5">
+              {/* 頂部切換頁籤 */}
+              <div className="flex bg-gray-100 p-1.5 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setTempAdvType('member')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${
+                    tempAdvType === 'member' ? 'bg-white text-black shadow-sm' : 'text-gray-400'
+                  }`}
+                >
+                  幫旅伴代墊
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTempAdvType('other')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${
+                    tempAdvType === 'other' ? 'bg-white text-black shadow-sm' : 'text-gray-400'
+                  }`}
+                >
+                  幫其他人
+                </button>
+              </div>
+
+              {tempAdvType === 'member' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500 font-black">
+                    選擇代墊旅伴（已自動排除付款人自己）：
+                  </p>
+                  {otherTripMembers.length === 0 ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+                      <p className="text-xs text-amber-900 font-black">💡 目前行程中沒有其他同行旅伴</p>
+                      <p className="text-[10px] text-amber-700 mt-1 font-normal">若要幫同行以外的朋友買東西，請切換至上方「幫其他人」。</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {otherTripMembers.map(m => (
+                        <div
+                          key={m.id}
+                          onClick={() => setTempAdvMemberId(m.id)}
+                          className={`p-3.5 rounded-2xl border-2 flex items-center gap-3 cursor-pointer transition-all ${
+                            tempAdvMemberId === m.id
+                              ? 'border-[#5E9E8E] bg-[#5E9E8E]/10 shadow-sm scale-102'
+                              : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                          }`}
+                        >
+                          <img src={m.avatar} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                          <div className="overflow-hidden">
+                            <p className="text-xs font-black text-black truncate">{m.name}</p>
+                            <span className="text-[9px] text-gray-400 font-mono">旅伴</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-500 font-black block mb-1">
+                      人（代墊對象）
+                    </label>
+                    <input
+                      type="text"
+                      value={tempAdvOtherPerson}
+                      onChange={e => setTempAdvOtherPerson(e.target.value)}
+                      placeholder="輸入姓名或稱謂 (如: 小明、老媽)..."
+                      className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black placeholder:text-gray-400"
+                    />
+
+                    {/* 快速標籤 */}
+                    <div className="flex gap-2 mt-2">
+                      <span className="text-[10px] text-gray-400 py-1 font-black">快速選單：</span>
+                      {['家人', '朋友', '同事', '親戚'].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => setTempAdvOtherPerson(tag)}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-3 py-1 rounded-full font-black active:scale-95 transition-all"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 font-black block mb-1">
+                      備註 (選填)
+                    </label>
+                    <input
+                      type="text"
+                      value={tempAdvOtherNote}
+                      onChange={e => setTempAdvOtherNote(e.target.value)}
+                      placeholder="提示（藥妝、公仔、食品）..."
+                      className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black placeholder:text-gray-400"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 💥 底部操作：取消 (紅字) / 保存 */}
+            <div className="flex gap-3 mt-6 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAdvanceModal(false)}
+                className="flex-1 py-4 bg-gray-100 hover:bg-red-50 text-red-500 rounded-2xl text-xs font-black active:scale-95 transition-all"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAdvanceModal}
+                className="flex-1 py-4 bg-[#86A760] hover:bg-[#769650] text-white rounded-2xl text-xs font-black shadow-md italic active:scale-95 transition-all"
+              >
+                ✓ 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingVoucherModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
@@ -3907,7 +4037,6 @@ export default function AppEntry() {
       localStorage.setItem('app_notice_enabled_v26', JSON.stringify(isEn));
     }
 
-    // 💥 純讀取資料庫，不進行寫死字串的覆蓋合併
     const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
     if (cData?.content && Array.isArray(cData.content)) {
       const formattedLogs = (cData.content as any[]).map(item => ({
