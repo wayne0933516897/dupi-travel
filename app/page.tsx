@@ -270,7 +270,7 @@ function compressVideoFile(file: File, maxDurationSec = 15): Promise<string> {
   });
 }
 
-// 💥 升級版圖片上傳元件：自適應長寬比裁切 + 智慧防黑邊邊界鎖定 + 一鍵原圖套用
+// 💥 升級版圖片上傳元件：支援 1:1 頭像模式（Cover 填滿 + 自由拖曳移動 + 智慧鎖定無黑邊）與自適應長圖模式
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -315,7 +315,7 @@ function ImageUploader({
     e.target.value = '';
   };
 
-  // 根據原圖比例計算裁切框尺寸（長截圖也能完整預覽，避免死板 1:1）
+  // 計算裁切框尺寸（若是 1:1 大頭貼維持 280x280 正方形）
   const boxDimensions = useMemo(() => {
     if (forceSquare) {
       return { width: 280, height: 280 };
@@ -333,17 +333,31 @@ function ImageUploader({
     return { width: Math.max(160, Math.round(w)), height: Math.max(160, Math.round(h)) };
   }, [imgNaturalSize, forceSquare]);
 
-  // 智慧防黑邊邊界限制：不讓拖曳位置跑出照片尺寸
+  // 💥 計算渲染到框內的基準尺寸（Cover 填滿保證大頭貼 1:1 絕無任何黑邊）
+  const renderedBaseSize = useMemo(() => {
+    const boxW = boxDimensions.width;
+    const boxH = boxDimensions.height;
+    const imgW = imgNaturalSize.width;
+    const imgH = imgNaturalSize.height;
+
+    if (forceSquare) {
+      const scale = Math.max(boxW / imgW, boxH / imgH);
+      return { width: imgW * scale, height: imgH * scale };
+    } else {
+      return { width: boxW, height: boxH };
+    }
+  }, [boxDimensions, imgNaturalSize, forceSquare]);
+
+  // 💥 智慧防黑邊限制：拖曳時保證照片四個邊界絕對不會離開裁切框
   const clampOffset = (newX: number, newY: number, currentZoom: number) => {
-    if (!imgRef.current) return { x: newX, y: newY };
     const boxW = boxDimensions.width;
     const boxH = boxDimensions.height;
     
-    const renderedW = boxW * currentZoom;
-    const renderedH = boxH * currentZoom;
+    const curW = renderedBaseSize.width * currentZoom;
+    const curH = renderedBaseSize.height * currentZoom;
 
-    const maxOffsetX = Math.max(0, (renderedW - boxW) / 2);
-    const maxOffsetY = Math.max(0, (renderedH - boxH) / 2);
+    const maxOffsetX = Math.max(0, (curW - boxW) / 2);
+    const maxOffsetY = Math.max(0, (curH - boxH) / 2);
 
     return {
       x: Math.min(maxOffsetX, Math.max(-maxOffsetX, newX)),
@@ -367,15 +381,18 @@ function ImageUploader({
     setIsDragging(false);
   };
 
-  // 1. 確認套用裁切
+  // 1. 確認套用裁切（1:1 大頭貼精準裁切繪製）
   const handleConfirmCrop = () => {
     if (!imgRef.current || !containerRef.current) return;
     const img = imgRef.current;
     const container = containerRef.current;
 
+    const targetWidth = forceSquare ? 400 : boxDimensions.width * 2;
+    const targetHeight = forceSquare ? 400 : boxDimensions.height * 2;
+
     const canvas = document.createElement('canvas');
-    canvas.width = boxDimensions.width * 2;
-    canvas.height = boxDimensions.height * 2;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -394,7 +411,7 @@ function ImageUploader({
     setRawImage(null);
   };
 
-  // 2. ⚡ 一鍵跳過裁切，直接使用原圖（等比例縮放壓縮防破圖）
+  // 2. ⚡ 一鍵跳過裁切直接使用原圖
   const handleDirectUseOriginal = () => {
     if (!rawImage) return;
     const img = new Image();
@@ -440,22 +457,28 @@ function ImageUploader({
         <div className="fixed inset-0 bg-black/85 z-[250] flex items-center justify-center p-4">
           <div className="bg-white rounded-[36px] p-6 max-w-sm w-full text-black font-black flex flex-col items-center animate-in zoom-in-95">
             <div className="w-full flex justify-between items-center mb-1">
-              <h4 className="text-base font-black">調整相片範圍</h4>
-              <button
-                type="button"
-                onClick={handleDirectUseOriginal}
-                className="text-[10px] bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full font-black hover:bg-amber-200 active:scale-95"
-                title="不進行任何裁切，完整保留原圖"
-              >
-                ⚡ 完整原圖使用
-              </button>
+              <h4 className="text-base font-black">
+                {forceSquare ? '調整大頭貼位置 (1:1)' : '調整相片範圍'}
+              </h4>
+              {!forceSquare && (
+                <button
+                  type="button"
+                  onClick={handleDirectUseOriginal}
+                  className="text-[10px] bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full font-black hover:bg-amber-200 active:scale-95"
+                  title="不進行任何裁切，完整保留原圖"
+                >
+                  ⚡ 完整原圖使用
+                </button>
+              )}
             </div>
-            <p className="text-[10px] text-gray-400 mb-3 text-left w-full">上下左右拖曳對齊，限制在照片尺寸內無黑邊</p>
+            <p className="text-[10px] text-gray-400 mb-3 text-left w-full">
+              {forceSquare ? '自由上下左右拖曳對齊，滑桿可放大縮小（無黑邊）' : '上下左右拖曳對齊，限制在照片尺寸內無黑邊'}
+            </p>
 
             <div 
               ref={containerRef}
               style={{ width: `${boxDimensions.width}px`, height: `${boxDimensions.height}px` }}
-              className="rounded-3xl overflow-hidden relative bg-gray-100 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
+              className={`overflow-hidden relative bg-gray-900 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E] ${forceSquare ? 'rounded-full shadow-lg' : 'rounded-3xl'}`}
               onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
               onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
               onMouseUp={handlePointerUp}
@@ -472,20 +495,22 @@ function ImageUploader({
                   transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
                   transformOrigin: 'center center',
                   maxWidth: 'none',
-                  width: '100%',
-                  height: '100%',
+                  width: `${renderedBaseSize.width}px`,
+                  height: `${renderedBaseSize.height}px`,
                   objectFit: 'cover',
                   pointerEvents: 'none'
                 }}
               />
-              <div className="absolute inset-0 pointer-events-none border-2 border-white/60 rounded-2xl flex items-center justify-center shadow-inner">
-                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full font-black">裁切視窗</span>
+              <div className={`absolute inset-0 pointer-events-none border-2 border-white/60 flex items-center justify-center shadow-inner ${forceSquare ? 'rounded-full' : 'rounded-2xl'}`}>
+                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full font-black">
+                  {forceSquare ? '大頭貼範圍' : '裁切視窗'}
+                </span>
               </div>
             </div>
 
             <div className="w-full mt-4 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                <span>原尺寸 (1.0x)</span>
+                <span>原比例 (1.0x)</span>
                 <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
                 <span>放大 (3.0x)</span>
               </div>
