@@ -18,6 +18,7 @@ interface Member {
   loginCode: string;
   editLogs: string[];
 }
+
 interface ExpenseRecord {
   id: number;
   category: string;
@@ -30,6 +31,7 @@ interface ExpenseRecord {
   note?: string;
   lastUpdatedById?: string;
 }
+
 interface Plan {
   id: number;
   time: string;
@@ -38,6 +40,7 @@ interface Plan {
   icon: string;
   lastUpdatedById?: string;
 }
+
 interface TodoItem {
   id: number;
   task: string;
@@ -105,6 +108,7 @@ interface Trip {
   memberIds: string[];
   joinCode: string;
 }
+
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
@@ -136,15 +140,15 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
     title: '🚀 V2.5 全面彈窗編輯與多媒體升級',
     items: [
       '所有模組（憑證、記帳、日誌、準備清單）編輯功能全面改為獨立新視窗彈窗。',
-      '憑證與日誌圖片導入方案 1：取消固定高度限制，改為等比例完整顯示 + 捲動容器，徹底防止長截圖遭裁切。',
-      '記帳幣別改為下拉式選單並自動記憶，自動記錄當前輸入時間，新增「宵夜」與「其他」類別。',
-      '查帳統計升級：新增支出圓餅圖與智慧行程日期分類。',
-      '日誌支援多圖上傳（上限 5 張）、15 秒短影片壓縮上傳、留言按讚與回覆。'
+      '相片上傳升級自適應長寬比裁切，智慧邊界鎖定防止拖出黑邊，並支援一鍵原圖上傳。',
+      '記帳幣別改為下拉式選單並自動記憶，付款方式每次送出後清空並加入強制選擇防呆。',
+      '日誌多張相片改為橫向左右滑動輪播；日誌留言支援在同一個對話卡片內巢狀回覆。',
+      '日誌短影片支援編輯預覽、一鍵更換與刪除影片；新增行程起訖日期防呆驗證。'
     ],
     enabled: true
   },
   {
-    id: 'log-2',
+    id: 'log-v24',
     version: 'v2.4',
     date: '2026-10-11',
     title: '🎫 憑證管理升級（未使用/已使用狀態切換）',
@@ -153,19 +157,6 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
       '新增憑證「未使用 / 已使用」雙狀態管理，支援一鍵標記已使用並記錄操作人。',
       '支援已使用憑證一鍵「取消使用」退回未使用狀態。',
       '憑證圖片預覽改為原始比例無黑邊呈現，並支援點擊全螢幕大圖放大檢視。'
-    ],
-    enabled: true
-  },
-  {
-    id: 'log-3',
-    version: 'v2.3',
-    date: '2026-10-10',
-    title: '📢 跑馬燈公告升級與地標 POI 搜尋引擎',
-    items: [
-      '首頁公告支援超長文字平滑無縫循環滾動 (Marquee)，點擊可查閱公告詳情。',
-      '新增系統公告與版本更新日誌中心彈窗，管理員可自由獨立開關各版本。',
-      '行程排程支援 OpenStreetMap 全球地標即時自動補全（如台北101、晴空塔等）。',
-      'Google Maps 導航改為直接喚起 App，徹底消滅 Safari 空白分頁。'
     ],
     enabled: true
   }
@@ -279,23 +270,28 @@ function compressVideoFile(file: File, maxDurationSec = 15): Promise<string> {
   });
 }
 
+// 💥 升級版圖片上傳元件：自適應長寬比裁切 + 智慧防黑邊邊界鎖定 + 一鍵原圖套用
 function ImageUploader({ 
   onUpload, 
   label, 
-  maxDimension = 800, 
-  quality = 0.8
+  maxDimension = 1200, 
+  quality = 0.85,
+  forceSquare = false
 }: { 
   onUpload: (base64: string) => void, 
   label: string, 
   maxDimension?: number, 
-  quality?: number
+  quality?: number,
+  forceSquare?: boolean
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [croppingImage, setCroppingImage] = useState<string | null>(null);
+  const [rawImage, setRawImage] = useState<string | null>(null);
+  const [imgNaturalSize, setImgNaturalSize] = useState({ width: 1, height: 1 });
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -305,12 +301,54 @@ function ImageUploader({
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      setCroppingImage(event.target?.result as string);
-      setZoom(1);
-      setOffset({ x: 0, y: 0 });
+      const b64 = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        setImgNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+        setRawImage(b64);
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
+      };
+      img.src = b64;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  // 根據原圖比例計算裁切框尺寸（長截圖也能完整預覽，避免死板 1:1）
+  const boxDimensions = useMemo(() => {
+    if (forceSquare) {
+      return { width: 280, height: 280 };
+    }
+    const maxBoxW = 280;
+    const maxBoxH = 380;
+    const aspect = imgNaturalSize.width / (imgNaturalSize.height || 1);
+    
+    let w = maxBoxW;
+    let h = w / aspect;
+    if (h > maxBoxH) {
+      h = maxBoxH;
+      w = h * aspect;
+    }
+    return { width: Math.max(160, Math.round(w)), height: Math.max(160, Math.round(h)) };
+  }, [imgNaturalSize, forceSquare]);
+
+  // 智慧防黑邊邊界限制：不讓拖曳位置跑出照片尺寸
+  const clampOffset = (newX: number, newY: number, currentZoom: number) => {
+    if (!imgRef.current) return { x: newX, y: newY };
+    const boxW = boxDimensions.width;
+    const boxH = boxDimensions.height;
+    
+    const renderedW = boxW * currentZoom;
+    const renderedH = boxH * currentZoom;
+
+    const maxOffsetX = Math.max(0, (renderedW - boxW) / 2);
+    const maxOffsetY = Math.max(0, (renderedH - boxH) / 2);
+
+    return {
+      x: Math.min(maxOffsetX, Math.max(-maxOffsetX, newX)),
+      y: Math.min(maxOffsetY, Math.max(-maxOffsetY, newY))
+    };
   };
 
   const handlePointerDown = (clientX: number, clientY: number) => {
@@ -320,24 +358,24 @@ function ImageUploader({
 
   const handlePointerMove = (clientX: number, clientY: number) => {
     if (!isDragging) return;
-    setOffset({
-      x: clientX - dragStart.x,
-      y: clientY - dragStart.y
-    });
+    const targetX = clientX - dragStart.x;
+    const targetY = clientY - dragStart.y;
+    setOffset(clampOffset(targetX, targetY, zoom));
   };
 
   const handlePointerUp = () => {
     setIsDragging(false);
   };
 
+  // 1. 確認套用裁切
   const handleConfirmCrop = () => {
     if (!imgRef.current || !containerRef.current) return;
     const img = imgRef.current;
     const container = containerRef.current;
 
     const canvas = document.createElement('canvas');
-    canvas.width = maxDimension;
-    canvas.height = maxDimension;
+    canvas.width = boxDimensions.width * 2;
+    canvas.height = boxDimensions.height * 2;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -345,27 +383,46 @@ function ImageUploader({
     const imgRect = img.getBoundingClientRect();
 
     const scale = img.naturalWidth / imgRect.width;
+    const cropX = Math.max(0, (boxRect.left - imgRect.left) * scale);
+    const cropY = Math.max(0, (boxRect.top - imgRect.top) * scale);
+    const cropW = Math.min(img.naturalWidth - cropX, boxRect.width * scale);
+    const cropH = Math.min(img.naturalHeight - cropY, boxRect.height * scale);
 
-    const cropX = (boxRect.left - imgRect.left) * scale;
-    const cropY = (boxRect.top - imgRect.top) * scale;
-    const cropW = boxRect.width * scale;
-    const cropH = boxRect.height * scale;
-
-    ctx.drawImage(
-      img,
-      cropX,
-      cropY,
-      cropW,
-      cropH,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
+    ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL('image/jpeg', quality);
     onUpload(base64);
-    setCroppingImage(null);
+    setRawImage(null);
+  };
+
+  // 2. ⚡ 一鍵跳過裁切，直接使用原圖（等比例縮放壓縮防破圖）
+  const handleDirectUseOriginal = () => {
+    if (!rawImage) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > maxDimension || h > maxDimension) {
+        if (w > h) {
+          h = Math.round((h * maxDimension) / w);
+          w = maxDimension;
+        } else {
+          w = Math.round((w * maxDimension) / h);
+          h = maxDimension;
+        }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, w, h);
+        onUpload(canvas.toDataURL('image/jpeg', quality));
+      } else {
+        onUpload(rawImage);
+      }
+      setRawImage(null);
+    };
+    img.src = rawImage;
   };
 
   return (
@@ -379,15 +436,26 @@ function ImageUploader({
       </button>
       <input type="file" ref={fileInput} onChange={handleFile} accept="image/*" className="hidden" />
 
-      {croppingImage && (
-        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
+      {rawImage && (
+        <div className="fixed inset-0 bg-black/85 z-[250] flex items-center justify-center p-4">
           <div className="bg-white rounded-[36px] p-6 max-w-sm w-full text-black font-black flex flex-col items-center animate-in zoom-in-95">
-            <h4 className="text-base font-black mb-1">調整照片大小與位置</h4>
-            <p className="text-[10px] text-gray-400 mb-4">拖曳調整位置，滑桿調整放大縮小</p>
+            <div className="w-full flex justify-between items-center mb-1">
+              <h4 className="text-base font-black">調整相片範圍</h4>
+              <button
+                type="button"
+                onClick={handleDirectUseOriginal}
+                className="text-[10px] bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full font-black hover:bg-amber-200 active:scale-95"
+                title="不進行任何裁切，完整保留原圖"
+              >
+                ⚡ 完整原圖使用
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 mb-3 text-left w-full">上下左右拖曳對齊，限制在照片尺寸內無黑邊</p>
 
             <div 
               ref={containerRef}
-              className="w-[260px] h-[260px] rounded-3xl overflow-hidden relative bg-gray-100 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
+              style={{ width: `${boxDimensions.width}px`, height: `${boxDimensions.height}px` }}
+              className="rounded-3xl overflow-hidden relative bg-gray-100 flex items-center justify-center select-none cursor-move border-4 border-[#5E9E8E]"
               onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
               onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
               onMouseUp={handlePointerUp}
@@ -397,7 +465,7 @@ function ImageUploader({
             >
               <img
                 ref={imgRef}
-                src={croppingImage}
+                src={rawImage}
                 alt="Crop preview"
                 draggable={false}
                 style={{
@@ -411,11 +479,11 @@ function ImageUploader({
                 }}
               />
               <div className="absolute inset-0 pointer-events-none border-2 border-white/60 rounded-2xl flex items-center justify-center shadow-inner">
-                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full font-black">預覽裁切範圍</span>
+                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full font-black">裁切視窗</span>
               </div>
             </div>
 
-            <div className="w-full mt-5 px-2">
+            <div className="w-full mt-4 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                 <span>原尺寸 (1.0x)</span>
                 <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
@@ -427,15 +495,19 @@ function ImageUploader({
                 max="3"
                 step="0.05"
                 value={zoom}
-                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const newZoom = parseFloat(e.target.value);
+                  setZoom(newZoom);
+                  setOffset(clampOffset(offset.x, offset.y, newZoom));
+                }}
                 className="w-full accent-[#5E9E8E] cursor-pointer"
               />
             </div>
 
-            <div className="flex gap-3 w-full mt-6">
+            <div className="flex gap-2.5 w-full mt-5">
               <button
                 type="button"
-                onClick={() => setCroppingImage(null)}
+                onClick={() => setRawImage(null)}
                 className="flex-1 py-3 bg-gray-100 rounded-2xl text-xs font-black"
               >
                 取消
@@ -645,12 +717,12 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
               </div>
             </div>
             <div className="mt-2">
-              <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64) => setRegAvatar(b64)} />
+              <ImageUploader label="上傳相片" forceSquare maxDimension={300} onUpload={(b64) => setRegAvatar(b64)} />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字，不可重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">登入帳號 (Account - 限英文/數字)</label>
             <input
               type="text"
               placeholder="例如: cat123"
@@ -661,7 +733,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
           </div>
 
           <div>
-            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文，不可重複)</label>
+            <label className="text-[10px] text-gray-500 font-black ml-1">用戶名稱 (Name - 可中文)</label>
             <input
               type="text"
               placeholder="例如: 柴犬, 肚皮"
@@ -840,6 +912,7 @@ function TripSelector({
     };
   }, [editingTripSetting]);
 
+  // 💥 修正 1：編輯行程起訖日期防呆
   const handleSaveTripSettings = async () => {
     if (!editingTripSetting) return;
     const { original, title, startDate, endDate, emoji } = editingTripSetting;
@@ -1121,8 +1194,8 @@ function TripSelector({
                 )}
               </div>
 
-              {visibleChangelogs.map(log => (
-                <div key={log.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
+              {visibleChangelogs.map((log, idx) => (
+                <div key={`${log.id}-${idx}`} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
                   <div className="flex justify-between items-center mb-1.5">
                     <span className="text-xs text-emerald-800 font-black bg-emerald-100/60 px-2 py-0.5 rounded-lg">{log.version}</span>
                     <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
@@ -1207,9 +1280,9 @@ function TripSelector({
                 <button type="button" onClick={() => setEditingLogItem({ id: '', version: '', date: getTodayDateString(), title: '', itemsText: '', enabled: true })} className="w-full py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-2xl text-xs font-black">+ 新增一筆版本日誌</button>
               )}
 
-<div className="space-y-2.5">
-  {changelogs.map((log, idx) => (
-    <div key={`${log.id}-${idx}`} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-start">
+              <div className="space-y-2.5">
+                {changelogs.map((log, idx) => (
+                  <div key={`${log.id}-${idx}`} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-start">
                     <div className="flex-1 mr-2 overflow-hidden">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded font-black">{log.version}</span>
@@ -1231,6 +1304,7 @@ function TripSelector({
         </div>
       )}
 
+      {/* 💥 修正 1：行程基本資料設定彈窗（結束日期不可小於開始日期） */}
       {editingTripSetting && (
         <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black my-auto">
@@ -1245,7 +1319,7 @@ function TripSelector({
                   <span>{editingTripSetting.emoji || '☃️'}</span>
                 )}
               </div>
-              <ImageUploader label="上傳自訂照片為封面" maxDimension={350} onUpload={(b64) => setEditingTripSetting({ ...editingTripSetting, emoji: b64 })} />
+              <ImageUploader label="上傳自訂照片為封面" forceSquare maxDimension={350} onUpload={(b64) => setEditingTripSetting({ ...editingTripSetting, emoji: b64 })} />
             </div>
 
             <div className="mb-4">
@@ -1254,8 +1328,32 @@ function TripSelector({
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-6">
-              <div><label className="text-[10px] text-gray-500 font-black ml-1">開始日期</label><input type="date" value={editingTripSetting.startDate} onChange={(e) => setEditingTripSetting({ ...editingTripSetting, startDate: e.target.value })} className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" /></div>
-              <div><label className="text-[10px] text-gray-500 font-black ml-1">結束日期</label><input type="date" value={editingTripSetting.endDate} onChange={(e) => setEditingTripSetting({ ...editingTripSetting, endDate: e.target.value })} className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" /></div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-black ml-1">開始日期</label>
+                <input 
+                  type="date" 
+                  value={editingTripSetting.startDate} 
+                  onChange={(e) => {
+                    const startVal = e.target.value;
+                    const endVal = editingTripSetting.endDate < startVal ? startVal : editingTripSetting.endDate;
+                    setEditingTripSetting({ ...editingTripSetting, startDate: startVal, endDate: endVal });
+                  }} 
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-black ml-1">結束日期</label>
+                <input 
+                  type="date" 
+                  min={editingTripSetting.startDate}
+                  value={editingTripSetting.endDate} 
+                  onChange={(e) => {
+                    if (e.target.value < editingTripSetting.startDate) return alert("❌ 結束日期不能早於開始日期！");
+                    setEditingTripSetting({ ...editingTripSetting, endDate: e.target.value });
+                  }} 
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" 
+                />
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -1279,18 +1377,48 @@ function TripSelector({
         </div>
       )}
 
+      {/* 💥 修正 1：建立新行程彈窗（結束日期不可小於開始日期） */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
              <h3 className="text-xl mb-4 italic uppercase">Setup New Trip</h3>
              <input placeholder="Trip Title..." value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black" />
              <div className="grid grid-cols-2 gap-4 mb-6">
-               <div><label className="text-[10px] text-gray-500 font-black">開始日期</label><input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" /></div>
-               <div><label className="text-[10px] text-gray-500 font-black">結束日期</label><input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" /></div>
+               <div>
+                 <label className="text-[10px] text-gray-500 font-black">開始日期</label>
+                 <input 
+                   type="date" 
+                   value={newTrip.startDate} 
+                   onChange={e => {
+                     const startVal = e.target.value;
+                     const endVal = newTrip.endDate < startVal ? startVal : newTrip.endDate;
+                     setNewTrip({ ...newTrip, startDate: startVal, endDate: endVal });
+                   }} 
+                   className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" 
+                 />
+               </div>
+               <div>
+                 <label className="text-[10px] text-gray-500 font-black">結束日期</label>
+                 <input 
+                   type="date" 
+                   min={newTrip.startDate}
+                   value={newTrip.endDate} 
+                   onChange={e => {
+                     if (e.target.value < newTrip.startDate) return alert("❌ 結束日期不能早於開始日期！");
+                     setNewTrip({ ...newTrip, endDate: e.target.value });
+                   }} 
+                   className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" 
+                 />
+               </div>
              </div>
              <div className="flex gap-4">
                 <button onClick={()=>setShowAddTrip(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
-                <button onClick={()=>{ if(!newTrip.title.trim()) return alert("請輸入旅行名稱！"); onAddTrip({...newTrip, id: Date.now().toString()}); setShowAddTrip(false); }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Create</button>
+                <button onClick={()=>{
+                  if(!newTrip.title.trim()) return alert("請輸入旅行名稱！");
+                  if (newTrip.startDate > newTrip.endDate) return alert("❌ 結束日期不能早於開始日期！");
+                  onAddTrip({...newTrip, id: Date.now().toString()});
+                  setShowAddTrip(false);
+                }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Create</button>
              </div>
           </div>
         </div>
@@ -1304,7 +1432,7 @@ function TripSelector({
               <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-white">
                 {loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http')) ? <img src={loginIcon} className="w-full h-full object-cover" /> : <span>{loginIcon || '❄️'}</span>}
               </div>
-              <ImageUploader label="上傳自訂圖案" maxDimension={300} onUpload={(b64) => onUpdateLoginIcon(b64)} />
+              <ImageUploader label="上傳自訂圖案" forceSquare maxDimension={300} onUpload={(b64) => onUpdateLoginIcon(b64)} />
             </div>
             <button onClick={() => setShowLoginIconModal(false)} className="w-full py-4 bg-[#86A760] text-white rounded-3xl font-black">完成設定</button>
           </div>
@@ -1344,7 +1472,7 @@ function TripSelector({
             <div className="overflow-y-auto flex-1 pr-1 space-y-3.5">
               <div className="flex flex-col items-center gap-2 mb-2">
                 <img src={editingMember.avatar || PRESET_ANIMAL_AVATARS[0]} className="w-20 h-20 rounded-full border-4 border-gray-100 object-cover shadow-md" />
-                <ImageUploader label="上傳相片" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
+                <ImageUploader label="上傳相片" forceSquare maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
               </div>
               <label className="text-[10px] text-gray-500 ml-2 font-black">用戶名稱</label>
               <input value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black text-xs" />
@@ -1367,7 +1495,7 @@ function TripSelector({
   );
 }
 
-// 3. 主畫面 (MainApp)
+// 3. 主應用程式 (MainApp)
 function MainApp({ 
   onBack, 
   user, 
@@ -1411,7 +1539,7 @@ function MainApp({
 
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
-  // 💥 V2.5 獨立新視窗編輯狀態 (Modal 控制)
+  // 獨立新視窗編輯狀態 (Modal)
   const [editingVoucherModal, setEditingVoucherModal] = useState<BookingDoc | null>(null);
   const [editingExpenseModal, setEditingExpenseModal] = useState<ExpenseRecord | null>(null);
   const [editingJournalModal, setEditingJournalModal] = useState<JournalEntry | null>(null);
@@ -1446,7 +1574,7 @@ function MainApp({
   const [editingMemberModal, setEditingMemberModal] = useState<Member | null>(null);
   const [exchangeRates, setExchangeRates] = useState({ JPY: 0.22, TWD: 1.0, CNY: 4.5 });
   
-  // 💥 記帳幣別自動記憶 (預設 JPY)
+  // 記帳幣別自動記憶 (預設 JPY)
   const [currency, setCurrency] = useState<'JPY' | 'TWD' | 'CNY'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dupi_preferred_currency');
@@ -1458,10 +1586,12 @@ function MainApp({
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
-  const [payMethod, setPayMethod] = useState('現金'); 
+  
+  // 💥 修正 3：記帳付款方式預設為空字串，每次送出後清空
+  const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
-  // 💥 日誌多圖與短影片輸入狀態
+  // 日誌多圖與短影片輸入狀態
   const [newJournalContent, setNewJournalContent] = useState('');
   const [newJournalImages, setNewJournalImages] = useState<string[]>([]);
   const [newJournalVideo, setNewJournalVideo] = useState('');
@@ -1794,9 +1924,12 @@ function MainApp({
     sync({ journals: next });
   };
 
+  // 💥 修正 4：新增留言或回覆
   const handleAddComment = (journalId: number, replyToCommentId?: number) => {
-    const key = replyToCommentId ? `reply_${replyToCommentId}` : journalId;
-    const text = (commentInputs[key as any] || '').trim();
+    const text = replyToCommentId 
+      ? (replyInputs[replyToCommentId] || '').trim()
+      : (commentInputs[journalId] || '').trim();
+
     if (!text) return alert("請輸入留言內容！");
 
     const newComment: JournalComment = {
@@ -1816,9 +1949,12 @@ function MainApp({
 
     setJournals(nextJournals);
     sync({ journals: nextJournals });
-    setCommentInputs({ ...commentInputs, [key as any]: '' });
+
     if (replyToCommentId) {
+      setReplyInputs({ ...replyInputs, [replyToCommentId]: '' });
       setReplyingCommentIds({ ...replyingCommentIds, [journalId]: null });
+    } else {
+      setCommentInputs({ ...commentInputs, [journalId]: '' });
     }
   };
 
@@ -1828,7 +1964,7 @@ function MainApp({
       if (j.id !== journalId) return j;
       return {
         ...j,
-        comments: (j.comments || []).filter(c => c.id !== commentId)
+        comments: (j.comments || []).filter(c => c.id !== commentId && c.replyToCommentId !== commentId)
       };
     });
     setJournals(nextJournals);
@@ -2126,7 +2262,7 @@ function MainApp({
               </div>
             ) : (
               <div className="space-y-6">
-                {/* 💥 憑證上傳按鈕置頂 */}
+                {/* 💥 修正 2：憑證上傳改用自適應長寬比裁切 + 原圖使用 */}
                 <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center shadow-sm">
                   <ImageUploader label="UPLOAD VOUCHER (新增憑證相片)" maxDimension={1200} onUpload={(b64)=>{
                     const title=prompt("請輸入憑證名稱 (例如: 迪士尼門票):"); 
@@ -2146,7 +2282,6 @@ function MainApp({
                   }} />
                 </div>
 
-                {/* 未使用 / 已使用 狀態切換子分頁 */}
                 <div className="flex bg-gray-100 rounded-2xl p-1 font-black">
                   <button 
                     onClick={() => setVoucherSubTab('未使用')} 
@@ -2178,7 +2313,6 @@ function MainApp({
                         <div className="flex justify-between items-center mb-2">
                           <h4 className="text-xs italic bg-orange-50 text-orange-900 px-3 py-1 rounded-full font-black">🎫 {b.title}</h4>
                           <div className="flex gap-2 items-center">
-                            {/* 💥 獨立彈窗編輯憑證 */}
                             <button onClick={() => setEditingVoucherModal(b)} className="text-blue-500 text-xs font-black p-1 hover:underline">🖋️ 編輯</button>
                             <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs font-black p-1">✕</button>
                           </div>
@@ -2193,7 +2327,6 @@ function MainApp({
                           )}
                         </div>
 
-                        {/* 💥 方案 1：長截圖取消固定高度限制，改為等比例完整顯示 + 自動滾動視窗 */}
                         {b.image && (
                           <div className="w-full max-h-[600px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 my-3 border border-gray-100">
                             <div 
@@ -2209,7 +2342,6 @@ function MainApp({
                           </div>
                         )}
 
-                        {/* 標記為已使用 / 取消使用 按鈕 */}
                         {voucherSubTab === '未使用' ? (
                           <button
                             type="button"
@@ -2271,7 +2403,6 @@ function MainApp({
             {expenseSubTab === '明細' ? (
               <>
                 <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
-                    {/* 💥 幣別改為下拉式選單並記憶上次選擇 (預設 JPY) */}
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-xs text-gray-500">幣別選擇 (自動記憶)</span>
                       <select
@@ -2291,7 +2422,6 @@ function MainApp({
 
                     <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="消費內容 (項目)..." className="w-full p-4 bg-gray-50 rounded-2xl mb-2 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                     
-                    {/* 💥 消費類別加入宵夜 (排在晚餐後) 與其他 (最後面) */}
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3">
                       {['早餐','午餐','晚餐','宵夜','交通','娛樂','購物','其他'].map(q=>(
                         <button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-600 font-black shrink-0 active:bg-gray-200">{q}</button>
@@ -2312,10 +2442,21 @@ function MainApp({
                       className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black text-lg border border-gray-200 mb-4 placeholder:text-gray-400" 
                     />
                     
-                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAY METHOD</p>
+                    {/* 💥 修正 3：付款方式選單（強制手動點選） */}
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-[10px] text-gray-500 ml-2 font-black">PAY METHOD (付款方式 - 必填)</p>
+                      {!payMethod && <span className="text-[9px] text-rose-500 font-bold">請點選一種付款方式</span>}
+                    </div>
                     <div className="grid grid-cols-4 gap-2 mb-4">
                       {['現金','信用卡','Suica','PayPay'].map(p=>(
-                        <button key={p} onClick={()=>setPayMethod(p)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${payMethod===p?'bg-[#5E9E8E] text-white shadow-md':'bg-gray-100 text-gray-500'}`}>{p}</button>
+                        <button 
+                          key={p} 
+                          type="button"
+                          onClick={()=>setPayMethod(p)} 
+                          className={`py-2 rounded-xl text-[10px] font-black transition-all ${payMethod===p?'bg-[#5E9E8E] text-white shadow-md scale-105':'bg-gray-100 text-gray-500'}`}
+                        >
+                          {p}
+                        </button>
                       ))}
                     </div>
 
@@ -2328,10 +2469,10 @@ function MainApp({
                       ))}
                     </div>
 
-                    {/* 💥 日期欄位取消手動選擇，直接記錄輸入當下的時間 */}
                     <button onClick={()=>{
                         if(!category.trim()) return alert("請輸入消費內容！");
                         if(!amount || Number(amount) <= 0) return alert("金額必須大於 0，不能為負數或空白！");
+                        if(!payMethod) return alert("❌ 請選擇付款方式！");
                         if(!expensePayerId) return alert("請選擇付款人！");
 
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
@@ -2354,8 +2495,12 @@ function MainApp({
                         sync({records:n}); 
                         
                         alert("✅ 記帳成功！");
-                        setAmount(''); setCategory(''); setExpenseNote('');
-                    }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic">SAVE EXPENSE</button>
+                        // 💥 修正 3：每次儲存後清空付款方式與欄位
+                        setAmount(''); 
+                        setCategory(''); 
+                        setExpenseNote('');
+                        setPayMethod('');
+                    }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
 
                 <div className="space-y-3 font-black">
@@ -2373,7 +2518,6 @@ function MainApp({
                               {r.amount} {r.currency || 'JPY'}
                               <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
                             </div>
-                            {/* 💥 編輯改為獨立新視窗彈窗 */}
                             <div className="absolute right-4 flex flex-col gap-2">
                               <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
                               <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
@@ -2417,7 +2561,6 @@ function MainApp({
                     <p className="text-[10px] text-gray-500 mt-1 font-black">共 {filteredRecords.length} 筆支出紀錄</p>
                   </div>
 
-                  {/* 💥 查帳統計新增圓餅圖 (分類佔比) */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                     <p className="text-xs text-gray-600 font-black mb-3">🍰 各分類支出佔比 (圓餅圖)</p>
                     {expenseStats.totalTwd > 0 ? (
@@ -2459,7 +2602,6 @@ function MainApp({
                   </div>
                 </div>
 
-                {/* 💥 行程日期分類檢視 */}
                 <div className="space-y-4">
                   <h4 className="text-xs text-gray-500 uppercase tracking-wider ml-1">📅 依行程日期分類檢視</h4>
                   {Object.keys(expenseStats.dateGroups).length === 0 && (
@@ -2510,7 +2652,6 @@ function MainApp({
                   className="w-full bg-gray-50 p-4 rounded-2xl mb-3 outline-none min-h-[100px] font-black text-black placeholder:text-gray-400 border border-gray-200" 
                 />
 
-                {/* 💥 多相片預覽列表 (上限 5 張) */}
                 {newJournalImages.length > 0 && (
                   <div className="flex gap-2 flex-wrap mb-3">
                     {newJournalImages.map((img, idx) => (
@@ -2528,7 +2669,6 @@ function MainApp({
                   </div>
                 )}
 
-                {/* 💥 15 秒短影片預覽 */}
                 {newJournalVideo && (
                   <div className="relative mb-3 inline-block">
                     <video src={newJournalVideo} className="w-36 h-24 rounded-2xl object-cover border-2 border-[#E9C46A]" controls />
@@ -2545,16 +2685,16 @@ function MainApp({
 
                 <div className="flex justify-between items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* 💥 修正 2：日誌照片上傳支援自適應裁切 + 一鍵原圖 */}
                       <ImageUploader 
                         label={`相片上傳 (${newJournalImages.length}/5)`} 
-                        maxDimension={1000} 
+                        maxDimension={1200} 
                         onUpload={img => {
                           if (newJournalImages.length >= 5) return alert("每則日誌最多上傳 5 張相片！");
                           setNewJournalImages([...newJournalImages, img]);
                         }} 
                       />
 
-                      {/* 💥 15 秒短影片上傳按鈕 */}
                       <label className="text-[10px] bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-xl font-black text-black cursor-pointer shadow-sm active:scale-95 transition-all">
                         🎬 上傳短影片 (15s)
                         <input
@@ -2604,15 +2744,17 @@ function MainApp({
                 const hasLiked = likes.includes(user.id);
                 const isCommentsOpen = !!expandedComments[j.id];
 
-                // 相容單張或多張照片
                 const allPhotos = j.images && j.images.length > 0 ? j.images : (j.image ? [j.image] : []);
+
+                // 💥 修正 4：整理主留言與巢狀子回覆
+                const rootComments = comments.filter(c => !c.replyToCommentId);
+                const getReplies = (parentId: number) => comments.filter(c => c.replyToCommentId === parentId);
 
                 return (
                   <div key={j.id} className="bg-white p-6 rounded-[32px] shadow-md border border-gray-100 animate-in slide-in-from-bottom-2 relative font-black">
                       <div className="absolute top-6 right-6 flex gap-3">
                         {(j.authorId === user.id || isWayne) && (
                           <>
-                            {/* 💥 日誌編輯改為獨立新視窗彈窗 */}
                             <button onClick={()=>setEditingJournalModal(j)} className="text-blue-400 text-xs hover:underline">🖋️</button>
                             <button onClick={()=>{if(confirm('確定刪除此日誌？')){const n=journals.filter(i=>i.id!==j.id); setJournals(n); sync({journals:n});}}} className="text-red-300 text-xs">🗑️</button>
                           </>
@@ -2629,31 +2771,39 @@ function MainApp({
 
                       <p className="text-sm mb-4 leading-relaxed font-black text-gray-800 whitespace-pre-wrap">{j.content}</p>
                       
-                      {/* 💥 方案 1：長截圖支援等比例完整顯示 + 捲動視窗 */}
+                      {/* 💥 修正 5：日誌多張相片改為橫向滑動輪播（左右 Scroll） */}
                       {allPhotos.length > 0 && (
-                        <div className="space-y-3 mb-4">
-                          {allPhotos.map((photoSrc, pIdx) => (
-                            <div key={pIdx} className="w-full max-h-[600px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 border border-gray-100">
-                              <div
-                                onClick={() => setLightboxImg(photoSrc)}
-                                className="w-full flex justify-center cursor-pointer hover:opacity-95 transition-opacity relative group"
-                                title="點擊放大圖片"
+                        <div className="relative mb-4">
+                          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 pt-1">
+                            {allPhotos.map((photoSrc, pIdx) => (
+                              <div 
+                                key={pIdx} 
+                                className="min-w-[85%] max-w-[85%] sm:min-w-[70%] snap-center shrink-0 max-h-[500px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 border border-gray-100 relative group"
                               >
-                                <img 
-                                  src={photoSrc} 
-                                  className="w-full object-contain rounded-[20px] shadow-sm" 
-                                  alt="journal visual"
-                                />
-                                <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-[20px]">
-                                  🔍 點擊放大
+                                <div
+                                  onClick={() => setLightboxImg(photoSrc)}
+                                  className="w-full flex justify-center cursor-pointer hover:opacity-95 transition-opacity"
+                                  title="點擊放大圖片"
+                                >
+                                  <img 
+                                    src={photoSrc} 
+                                    className="w-full object-contain rounded-[20px] shadow-sm max-h-[480px]" 
+                                    alt={`visual ${pIdx + 1}`}
+                                  />
                                 </div>
+                                <span className="absolute bottom-3 right-3 bg-black/60 text-white text-[9px] px-2 py-0.5 rounded-full font-mono font-black">
+                                  {pIdx + 1} / {allPhotos.length}
+                                </span>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                          {allPhotos.length > 1 && (
+                            <p className="text-[9px] text-gray-400 text-center font-black mt-1">⟵ 左右滑動檢視更多相片 ⟶</p>
+                          )}
                         </div>
                       )}
 
-                      {/* 💥 影片播放器展示 */}
+                      {/* 影片播放器展示 */}
                       {j.video && (
                         <div className="w-full rounded-[24px] overflow-hidden bg-black mb-4 flex justify-center max-h-[400px]">
                           <video src={j.video} controls className="max-w-full max-h-[400px] object-contain" />
@@ -2680,23 +2830,26 @@ function MainApp({
                         </button>
                       </div>
 
+                      {/* 💥 修正 4：日誌留言與回覆在同一個對話方塊內展示 */}
                       {isCommentsOpen && (
                         <div className="mt-4 pt-3 border-t border-dashed border-gray-200 space-y-3 animate-in fade-in">
-                          {comments.length === 0 ? (
+                          {rootComments.length === 0 ? (
                             <p className="text-[10px] text-gray-400 italic py-1">目前尚無留言，來留第一則吧～</p>
                           ) : (
-                            <div className="space-y-2.5">
-                              {comments.map(c => {
+                            <div className="space-y-3">
+                              {rootComments.map(c => {
                                 const cAuthor = getMember(c.authorId);
                                 const canDeleteComment = c.authorId === user.id || isWayne;
                                 const cLikes = c.likes || [];
                                 const hasCLiked = cLikes.includes(user.id);
                                 const isReplying = replyingCommentIds[j.id] === c.id;
+                                const replies = getReplies(c.id);
 
                                 return (
-                                  <div key={c.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 space-y-2">
+                                  <div key={c.id} className="bg-gray-50 p-4 rounded-3xl border border-gray-100 space-y-3">
+                                    {/* 主留言主體 */}
                                     <div className="flex items-start gap-2.5">
-                                      <img src={cAuthor.avatar} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
+                                      <img src={cAuthor.avatar} className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
                                       <div className="flex-1">
                                         <div className="flex items-center justify-between">
                                           <span className="text-[11px] font-black text-black">{cAuthor.name}</span>
@@ -2704,7 +2857,6 @@ function MainApp({
                                         </div>
                                         <p className="text-xs text-gray-800 mt-1 leading-relaxed font-normal">{c.content}</p>
                                         
-                                        {/* 💥 留言按讚與回覆按鈕列 */}
                                         <div className="flex items-center gap-3 mt-2">
                                           <button
                                             type="button"
@@ -2735,36 +2887,64 @@ function MainApp({
                                       )}
                                     </div>
 
-                                    {/* 💥 針對特定留言的回覆輸入框 */}
+                                    {/* 巢狀子回覆列表（同一卡片內縮排展示） */}
+                                    {replies.length > 0 && (
+                                      <div className="pl-6 border-l-2 border-[#5E9E8E]/30 space-y-2 mt-2">
+                                        {replies.map(rep => {
+                                          const repAuthor = getMember(rep.authorId);
+                                          const canDeleteReply = rep.authorId === user.id || isWayne;
+                                          const repLikes = rep.likes || [];
+                                          const hasRepLiked = repLikes.includes(user.id);
+
+                                          return (
+                                            <div key={rep.id} className="bg-white/80 p-2.5 rounded-2xl border border-gray-100 flex items-start gap-2">
+                                              <img src={repAuthor.avatar} className="w-5 h-5 rounded-full object-cover shrink-0 mt-0.5" />
+                                              <div className="flex-1">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[10px] font-black text-black">{repAuthor.name}</span>
+                                                  <span className="text-[8px] text-gray-400 font-mono">{rep.date}</span>
+                                                </div>
+                                                <p className="text-[11px] text-gray-800 mt-0.5 leading-relaxed font-normal">{rep.content}</p>
+                                                <div className="mt-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleToggleCommentLike(j.id, rep.id)}
+                                                    className={`text-[9px] font-black flex items-center gap-1 ${hasRepLiked ? 'text-rose-500' : 'text-gray-400'}`}
+                                                  >
+                                                    <span>{hasRepLiked ? '❤️' : '🤍'}</span>
+                                                    <span>{repLikes.length > 0 ? repLikes.length : '讚'}</span>
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              {canDeleteReply && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDeleteComment(j.id, rep.id)}
+                                                  className="text-[9px] text-gray-300 hover:text-red-500 font-black"
+                                                >
+                                                  ✕
+                                                </button>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
+                                    {/* 針對該留言的回覆輸入框 */}
                                     {isReplying && (
-                                      <div className="flex gap-2 pl-8 pt-2">
+                                      <div className="flex gap-2 pl-6 pt-2">
                                         <input
                                           type="text"
                                           value={replyInputs[c.id] || ''}
                                           onChange={(e) => setReplyInputs({ ...replyInputs, [c.id]: e.target.value })}
                                           placeholder={`回覆 @${cAuthor.name}...`}
-                                          className="flex-1 p-2 bg-white rounded-xl text-xs outline-none border border-gray-200 font-black text-black"
+                                          className="flex-1 p-2 px-3 bg-white rounded-xl text-xs outline-none border border-gray-200 font-black text-black"
                                         />
                                         <button
                                           type="button"
-                                          onClick={() => {
-                                            const replyText = (replyInputs[c.id] || '').trim();
-                                            if (!replyText) return;
-                                            const newReply: JournalComment = {
-                                              id: Date.now(),
-                                              authorId: user.id,
-                                              content: `回覆 @${cAuthor.name}：${replyText}`,
-                                              date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                                              likes: [],
-                                              replyToCommentId: c.id
-                                            };
-                                            const next = journals.map(item => item.id === j.id ? { ...item, comments: [...(item.comments || []), newReply] } : item);
-                                            setJournals(next);
-                                            sync({ journals: next });
-                                            setReplyInputs({ ...replyInputs, [c.id]: '' });
-                                            setReplyingCommentIds({ ...replyingCommentIds, [j.id]: null });
-                                          }}
-                                          className="px-3 py-1.5 bg-[#5E9E8E] text-white rounded-xl text-[10px] font-black"
+                                          onClick={() => handleAddComment(j.id, c.id)}
+                                          className="px-3.5 py-1.5 bg-[#5E9E8E] text-white rounded-xl text-[10px] font-black"
                                         >
                                           送出
                                         </button>
@@ -2776,6 +2956,7 @@ function MainApp({
                             </div>
                           )}
 
+                          {/* 最外層主留言輸入框 */}
                           <div className="flex gap-2 items-center pt-2">
                             <input
                               type="text"
@@ -2787,7 +2968,7 @@ function MainApp({
                                   handleAddComment(j.id);
                                 }
                               }}
-                              placeholder="輸入留言..."
+                              placeholder="發表公開留言..."
                               className="flex-1 p-2.5 px-4 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200"
                             />
                             <button
@@ -2816,7 +2997,7 @@ function MainApp({
                 ))}
             </div>
 
-            <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black font-black">
+            <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
                 <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                 
                 <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
@@ -2869,7 +3050,6 @@ function MainApp({
                                 })}
                             </div>
                         </div>
-                        {/* 💥 準備事項改為獨立新視窗編輯 */}
                         <div className="flex items-center gap-3">
                             <button onClick={()=>setEditingTodoModal(todo)} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
                             <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 text-lg active:text-red-500">✕</button>
@@ -2956,7 +3136,7 @@ function MainApp({
         )}
       </div>
 
-      {/* 💥 V2.5 獨立新視窗彈窗 1：憑證編輯 Modal */}
+      {/* 💥 獨立彈窗 1：憑證編輯 Modal */}
       {editingVoucherModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
@@ -3002,13 +3182,12 @@ function MainApp({
         </div>
       )}
 
-{/* 💥 V2.5 獨立新視窗彈窗 2：記帳編輯 Modal */}
-{editingExpenseModal && (
+      {/* 💥 獨立彈窗 2：記帳編輯 Modal */}
+      {editingExpenseModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg italic mb-4 uppercase">編輯記帳紀錄</h3>
             <div className="space-y-4">
-              {/* 1. 幣別下拉選單 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">幣別選擇</label>
                 <select
@@ -3025,7 +3204,6 @@ function MainApp({
                 </select>
               </div>
 
-              {/* 2. 消費類別輸入框 + 快速選單膠囊按鈕 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">消費類別</label>
                 <input 
@@ -3052,7 +3230,6 @@ function MainApp({
                 </div>
               </div>
 
-              {/* 3. 金額輸入 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">金額 ({editingExpenseModal.currency})</label>
                 <input 
@@ -3064,7 +3241,6 @@ function MainApp({
                 />
               </div>
 
-              {/* 4. 付款人員快速選單 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">付款人員 (PAYER)</label>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar mt-1 pb-1">
@@ -3086,7 +3262,6 @@ function MainApp({
                 </div>
               </div>
 
-              {/* 5. 備註說明 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">備註說明</label>
                 <input 
@@ -3098,7 +3273,6 @@ function MainApp({
                 />
               </div>
 
-              {/* 6. 付款方式 */}
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">付款方式</label>
                 <div className="grid grid-cols-4 gap-1.5 mt-1">
@@ -3124,7 +3298,7 @@ function MainApp({
               <button 
                 type="button" 
                 onClick={() => setEditingExpenseModal(null)} 
-                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black hover:bg-gray-200 transition-colors"
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black hover:bg-gray-200"
               >
                 取消
               </button>
@@ -3145,7 +3319,7 @@ function MainApp({
                   setEditingExpenseModal(null);
                   alert("✅ 記帳紀錄已更新！");
                 }} 
-                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md hover:bg-[#769650] transition-colors"
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md hover:bg-[#769650]"
               >
                 ✓ 儲存修改
               </button>
@@ -3154,10 +3328,10 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 V2.5 獨立新視窗彈窗 3：日誌編輯 Modal */}
+      {/* 💥 獨立彈窗 3：日誌編輯 Modal（支援相片管理與短影片預覽/替換/刪除） */}
       {editingJournalModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
-          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
+          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg italic mb-4 uppercase">編輯日誌內容</h3>
             <textarea 
               rows={4} 
@@ -3189,7 +3363,7 @@ function MainApp({
               </div>
               <ImageUploader
                 label="新增相片"
-                maxDimension={1000}
+                maxDimension={1200}
                 onUpload={(b64) => {
                   const current = (editingJournalModal.images && editingJournalModal.images.length > 0) ? editingJournalModal.images : (editingJournalModal.image ? [editingJournalModal.image] : []);
                   if (current.length >= 5) return alert("每則日誌最多 5 張相片！");
@@ -3197,6 +3371,45 @@ function MainApp({
                   setEditingJournalModal({ ...editingJournalModal, images: updated, image: updated[0] });
                 }}
               />
+            </div>
+
+            {/* 💥 修正 6：日誌影片編輯與刪除區塊 */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-2xl border border-gray-200">
+              <label className="text-[10px] text-gray-500 block mb-2 font-black">短影片管理 (15秒)</label>
+              {editingJournalModal.video ? (
+                <div className="relative inline-block w-full">
+                  <video src={editingJournalModal.video} controls className="w-full max-h-48 rounded-xl object-contain bg-black" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("確定刪除此日誌中的短影片？")) {
+                        setEditingJournalModal({ ...editingJournalModal, video: '' });
+                      }
+                    }}
+                    className="mt-2 w-full py-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-xs font-black flex items-center justify-center gap-1"
+                  >
+                    🗑️ 刪除短影片
+                  </button>
+                </div>
+              ) : (
+                <label className="w-full py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-black text-gray-600 flex items-center justify-center cursor-pointer hover:bg-gray-100 active:scale-95 transition-all">
+                  🎬 上傳短影片 (15s)
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const b64 = await compressVideoFile(file, 15);
+                        setEditingJournalModal({ ...editingJournalModal, video: b64 });
+                      } catch (err) {}
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
             </div>
 
             <div className="flex gap-3 mt-6">
@@ -3225,7 +3438,7 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 V2.5 獨立新視窗彈窗 4：準備清單編輯 Modal */}
+      {/* 💥 獨立彈窗 4：準備清單編輯 Modal */}
       {editingTodoModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
@@ -3324,7 +3537,7 @@ function MainApp({
                 ))}
               </div>
 
-              <ImageUploader label="上傳自訂頭像 (可縮放調整)" maxDimension={300} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
+              <ImageUploader label="上傳自訂頭像" forceSquare maxDimension={300} onUpload={(b64)=>setEditingMemberModal({...editingMemberModal, avatar:b64})} />
             </div>
 
             <label className="text-[10px] text-gray-500 ml-2 font-black">
@@ -3392,7 +3605,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 全螢幕圖片放大檢視燈箱 */}
       {lightboxImg && (
         <div 
           className="fixed inset-0 bg-black/90 z-[250] flex items-center justify-center p-4 animate-in fade-in"
@@ -3649,14 +3861,19 @@ export default function AppEntry() {
         ...item,
         enabled: item.enabled !== undefined ? item.enabled : true
       }));
-      const hasV25 = existing.some(item => item.version === 'v2.5');
-      const mergedLogs = hasV25 ? existing : [...DEFAULT_CHANGELOGS.filter(d => d.version === 'v2.5'), ...existing];
+
+      // 依據 version 進行去重保證 key 唯一
+      const uniqueMap = new Map();
+      [...DEFAULT_CHANGELOGS, ...existing].forEach(item => {
+        if (!uniqueMap.has(item.version)) {
+          uniqueMap.set(item.version, item);
+        }
+      });
+      const mergedLogs = Array.from(uniqueMap.values());
 
       setChangelogs(mergedLogs);
       localStorage.setItem('app_changelogs_v26', JSON.stringify(mergedLogs));
-      if (!hasV25) {
-        await supabase.from('trips').upsert({ id: '__app_changelogs__', content: mergedLogs });
-      }
+      await supabase.from('trips').upsert({ id: '__app_changelogs__', content: mergedLogs });
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
