@@ -18,15 +18,43 @@ interface Member {
   loginCode: string;
   editLogs: string[];
 }
-interface ExpenseRecord { id: number; category: string; amount: string; currency: 'JPY' | 'TWD' | 'CNY'; twdAmount: string; payMethod: string; payerId: string; date: string; note?: string; lastUpdatedById?: string; }
-interface Plan { id: number; time: string; title: string; desc: string; icon: string; lastUpdatedById?: string; }
-interface TodoItem { id: number; task: string; note?: string; assigneeIds: string[]; completedAssigneeIds: string[]; category: string; lastUpdatedById?: string; }
+interface ExpenseRecord {
+  id: number;
+  category: string;
+  amount: string;
+  currency: 'JPY' | 'TWD' | 'CNY';
+  twdAmount: string;
+  payMethod: string;
+  payerId: string;
+  date: string;
+  note?: string;
+  lastUpdatedById?: string;
+}
+interface Plan {
+  id: number;
+  time: string;
+  title: string;
+  desc: string;
+  icon: string;
+  lastUpdatedById?: string;
+}
+interface TodoItem {
+  id: number;
+  task: string;
+  note?: string;
+  assigneeIds: string[];
+  completedAssigneeIds: string[];
+  category: string;
+  lastUpdatedById?: string;
+}
 
 interface JournalComment {
   id: number;
   authorId: string;
   content: string;
   date: string;
+  likes?: string[];
+  replyToCommentId?: number;
 }
 
 interface JournalEntry { 
@@ -34,19 +62,52 @@ interface JournalEntry {
   authorId: string; 
   content: string; 
   date: string; 
-  image?: string; 
+  image?: string;
+  images?: string[]; // 支援多圖 (上限 5 張)
+  video?: string;    // 支援 15 秒短影片
   lastUpdatedById?: string;
   likes?: string[];
   comments?: JournalComment[];
 }
 
-interface Flight { id: number; airline: string; flightNo: string; fromCode: string; toCode: string; depTime: string; arrTime: string; duration: string; date: string; baggage: string; aircraft: string; lastUpdatedById?: string; }
-interface BookingDoc { id: number; type: string; title: string; image?: string; lastUpdatedById?: string; }
-interface Trip { id: string; title: string; startDate: string; endDate: string; emoji: string; memberIds: string[]; joinCode: string; }
+interface Flight {
+  id: number;
+  airline: string;
+  flightNo: string;
+  fromCode: string;
+  toCode: string;
+  depTime: string;
+  arrTime: string;
+  duration: string;
+  date: string;
+  baggage: string;
+  aircraft: string;
+  lastUpdatedById?: string;
+}
+
+interface BookingDoc { 
+  id: number; 
+  type: string; 
+  title: string; 
+  image?: string; 
+  lastUpdatedById?: string;
+  status?: 'unused' | 'used';
+  usedByMemberName?: string;
+  usedAt?: string;
+}
+
+interface Trip {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  emoji: string;
+  memberIds: string[];
+  joinCode: string;
+}
 interface ScheduleData { [key: number]: Plan[]; }
 interface CityWeatherConfig { id: string; name: string; dayIndexes: number[]; }
 
-// 💥 每個版本日誌皆有獨立開關 (enabled)
 interface ChangelogItem {
   id: string;
   version: string;
@@ -67,10 +128,36 @@ const PRESET_ANIMAL_AVATARS = [
 
 const PRESET_TRIP_ICONS = ['☃️', '❄️', '🗻', '✈️', '🌸', '⛩️', '🗼', '🌴', '🍜', '⛺', '🏖️', '🚗', '🎡', '🍱'];
 
-// 系統預設範例日誌
 const DEFAULT_CHANGELOGS: ChangelogItem[] = [
   {
-    id: 'log-1',
+    id: 'log-v25',
+    version: 'v2.5',
+    date: '2026-10-12',
+    title: '🚀 V2.5 全面彈窗編輯與多媒體升級',
+    items: [
+      '所有模組（憑證、記帳、日誌、準備清單）編輯功能全面改為獨立新視窗彈窗。',
+      '憑證與日誌圖片導入方案 1：取消固定高度限制，改為等比例完整顯示 + 捲動容器，徹底防止長截圖遭裁切。',
+      '記帳幣別改為下拉式選單並自動記憶，自動記錄當前輸入時間，新增「宵夜」與「其他」類別。',
+      '查帳統計升級：新增支出圓餅圖與智慧行程日期分類。',
+      '日誌支援多圖上傳（上限 5 張）、15 秒短影片壓縮上傳、留言按讚與回覆。'
+    ],
+    enabled: true
+  },
+  {
+    id: 'log-2',
+    version: 'v2.4',
+    date: '2026-10-11',
+    title: '🎫 憑證管理升級（未使用/已使用狀態切換）',
+    items: [
+      '憑證上傳按鈕已置頂至列表最上方，新上傳憑證自動排序於最前端。',
+      '新增憑證「未使用 / 已使用」雙狀態管理，支援一鍵標記已使用並記錄操作人。',
+      '支援已使用憑證一鍵「取消使用」退回未使用狀態。',
+      '憑證圖片預覽改為原始比例無黑邊呈現，並支援點擊全螢幕大圖放大檢視。'
+    ],
+    enabled: true
+  },
+  {
+    id: 'log-3',
     version: 'v2.3',
     date: '2026-10-10',
     title: '📢 跑馬燈公告升級與地標 POI 搜尋引擎',
@@ -79,17 +166,6 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
       '新增系統公告與版本更新日誌中心彈窗，管理員可自由獨立開關各版本。',
       '行程排程支援 OpenStreetMap 全球地標即時自動補全（如台北101、晴空塔等）。',
       'Google Maps 導航改為直接喚起 App，徹底消滅 Safari 空白分頁。'
-    ],
-    enabled: true
-  },
-  {
-    id: 'log-2',
-    version: 'v2.2',
-    date: '2026-10-10',
-    title: '❤️ 日誌社群互動（按讚與留言串）',
-    items: [
-      '日誌卡片支援點擊愛心切換按讚/收回讚，讚數即時全域同步。',
-      '新增多用戶即時留言串功能，支援留言發布與本人/管理員刪除。'
     ],
     enabled: true
   }
@@ -126,6 +202,15 @@ function getTodayShortDateString(): string {
   const m = String(today.getMonth() + 1).padStart(2, '0');
   const d = String(today.getDate()).padStart(2, '0');
   return `${m}/${d}`;
+}
+
+function getNowTimestampString(): string {
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `${m}/${d} ${hh}:${mm}`;
 }
 
 function getDatesList(startStr: string, endStr: string): string[] {
@@ -168,10 +253,36 @@ function detectPlaceIcon(name: string): string {
   return '📍';
 }
 
+function compressVideoFile(file: File, maxDurationSec = 15): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    const blobUrl = URL.createObjectURL(file);
+    video.src = blobUrl;
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(blobUrl);
+      if (video.duration > maxDurationSec + 0.5) {
+        alert(`❌ 影片長度為 ${Math.round(video.duration)} 秒，超過 ${maxDurationSec} 秒上限！`);
+        return reject(new Error('Video duration exceeds limit'));
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve(e.target?.result as string);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      reject(new Error('Failed to load video metadata'));
+    };
+  });
+}
+
 function ImageUploader({ 
   onUpload, 
   label, 
-  maxDimension = 600, 
+  maxDimension = 800, 
   quality = 0.8
 }: { 
   onUpload: (base64: string) => void, 
@@ -616,7 +727,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   );
 }
 
-// 2. 主畫面
+// 2. 主畫面 (TripSelector)
 function TripSelector({ 
   user, 
   onLogout, 
@@ -668,15 +779,11 @@ function TripSelector({
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showLoginIconModal, setShowLoginIconModal] = useState(false);
 
-  // 公告中心彈窗
   const [showNoticeModal, setShowNoticeModal] = useState(false);
-
-  // Wayne 專用公告管理編輯彈窗
   const [showNoticeAdminModal, setShowNoticeAdminModal] = useState(false);
   const [tempNoticeText, setTempNoticeText] = useState(notice || '');
   const [tempNoticeEnabled, setTempNoticeEnabled] = useState(noticeEnabled);
 
-  // 版本日誌管理編輯彈窗
   const [showChangelogAdminModal, setShowChangelogAdminModal] = useState(false);
   const [editingLogItem, setEditingLogItem] = useState<{
     id: string;
@@ -771,7 +878,6 @@ function TripSelector({
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
-      {/* 頂部成員與選單 */}
       <div className="flex justify-between items-center mb-6 relative">
         <div className="font-black">
           <p className="text-xs text-gray-400 uppercase tracking-widest">{isWayne ? 'Admin Mode,' : 'User Mode,'}</p>
@@ -822,7 +928,6 @@ function TripSelector({
         </div>
       </div>
 
-      {/* 首頁跑馬燈（noticeEnabled 為 true 時顯示） */}
       {noticeEnabled && (
         <div 
           onClick={() => setShowNoticeModal(true)}
@@ -852,7 +957,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* Wayne 專屬：查看全站行程開關 */}
       {isWayne && (
         <div className="mb-6 bg-white p-3.5 rounded-2xl border border-purple-100 flex justify-between items-center shadow-sm font-black">
           <div className="flex items-center gap-2">
@@ -871,7 +975,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 行程列表標頭與功能按鈕 */}
       <div className="flex justify-between items-center mb-6 font-black">
         <h3 className="text-sm text-[#5E9E8E] uppercase italic">
           {wayneViewAll ? 'All Trips (Global View)' : 'My Trips'}
@@ -898,7 +1001,6 @@ function TripSelector({
         </div>
       </div>
 
-      {/* 行程清單 */}
       <div className="space-y-6">
         {visibleTrips.length === 0 && (
           <div className="bg-white p-8 rounded-3xl text-center text-gray-300 font-black">
@@ -990,7 +1092,6 @@ function TripSelector({
         })}
       </div>
 
-      {/* 「公告與版本更新日誌中心」彈窗 */}
       {showNoticeModal && (
         <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-lg p-7 rounded-[44px] shadow-2xl text-black my-auto max-h-[88vh] overflow-y-auto animate-in zoom-in-95">
@@ -1002,86 +1103,48 @@ function TripSelector({
                   <p className="text-[10px] text-gray-400">Dupi Travel Changelog & Notice</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowNoticeModal(false)}
-                className="text-gray-400 hover:text-black text-xl p-1"
-              >
-                ✕
-              </button>
+              <button onClick={() => setShowNoticeModal(false)} className="text-gray-400 hover:text-black text-xl p-1">✕</button>
             </div>
 
-            {/* 區塊 1：當前置頂公告 */}
             {noticeEnabled && (
               <div className="bg-amber-50 border border-amber-200/80 rounded-3xl p-5 mb-6">
-                <span className="text-[10px] bg-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-full font-black">
-                  📌 當前置頂公告
-                </span>
-                <p className="text-xs text-amber-950 leading-relaxed font-bold whitespace-pre-wrap mt-2">
-                  {notice || '歡迎使用肚皮旅遊！祝各位旅途平安愉快～'}
-                </p>
+                <span className="text-[10px] bg-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-full font-black">📌 當前置頂公告</span>
+                <p className="text-xs text-amber-950 leading-relaxed font-bold whitespace-pre-wrap mt-2">{notice || '歡迎使用肚皮旅遊！'}</p>
               </div>
             )}
 
-            {/* 區塊 2：版本更新日誌 */}
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
                 <span className="text-xs text-[#5E9E8E] uppercase tracking-wider">📜 歷史版本更新日誌</span>
                 {isWayne && (
-                  <button 
-                    onClick={() => { setShowNoticeModal(false); setShowChangelogAdminModal(true); }}
-                    className="text-[10px] text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-xl font-black hover:bg-indigo-100"
-                  >
-                    ⚙️ 管理日記
-                  </button>
+                  <button onClick={() => { setShowNoticeModal(false); setShowChangelogAdminModal(true); }} className="text-[10px] text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-xl font-black">⚙️ 管理日記</button>
                 )}
               </div>
 
-              {visibleChangelogs.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-xs bg-gray-50 rounded-3xl border border-gray-100">
-                  <p>目前尚無已公開的版本更新日誌</p>
-                  {isWayne && (
-                    <button 
-                      onClick={() => { setShowNoticeModal(false); setShowChangelogAdminModal(true); }}
-                      className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-sm"
-                    >
-                      前往管理並開啟版本日記
-                    </button>
-                  )}
-                </div>
-              ) : (
-                visibleChangelogs.map(log => (
-                  <div key={log.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-xs text-emerald-800 font-black bg-emerald-100/60 px-2 py-0.5 rounded-lg">
-                        {log.version}
-                      </span>
-                      <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
-                    </div>
-                    <h4 className="text-xs text-black font-black mb-2">{log.title}</h4>
-                    <ul className="space-y-1">
-                      {log.items.map((item, itemIdx) => (
-                        <li key={itemIdx} className="text-[11px] text-gray-600 font-normal leading-relaxed flex items-start gap-1.5">
-                          <span className="text-emerald-500 font-black mt-0.5">•</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+              {visibleChangelogs.map(log => (
+                <div key={log.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs text-emerald-800 font-black bg-emerald-100/60 px-2 py-0.5 rounded-lg">{log.version}</span>
+                    <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
                   </div>
-                ))
-              )}
+                  <h4 className="text-xs text-black font-black mb-2">{log.title}</h4>
+                  <ul className="space-y-1">
+                    {log.items.map((item, itemIdx) => (
+                      <li key={itemIdx} className="text-[11px] text-gray-600 font-normal leading-relaxed flex items-start gap-1.5">
+                        <span className="text-emerald-500 font-black mt-0.5">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
 
-            <button 
-              onClick={() => setShowNoticeModal(false)}
-              className="w-full mt-6 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform"
-            >
-              關閉視窗
-            </button>
+            <button onClick={() => setShowNoticeModal(false)} className="w-full mt-6 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md">關閉視窗</button>
           </div>
         </div>
       )}
 
-      {/* Wayne 管理員首頁公告開關彈窗 */}
       {showNoticeAdminModal && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[44px] shadow-2xl text-black">
@@ -1091,54 +1154,24 @@ function TripSelector({
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex justify-between items-center mb-5">
               <div>
                 <p className="text-xs font-black">首頁跑馬燈顯示狀態</p>
-                <p className="text-[10px] text-gray-400 font-normal">
-                  {tempNoticeEnabled ? '🟢 目前狀態：已開啟並顯示於首頁' : '⚪ 目前狀態：已關閉隱藏（首頁不顯示）'}
-                </p>
+                <p className="text-[10px] text-gray-400 font-normal">{tempNoticeEnabled ? '🟢 目前狀態：已開啟並顯示於首頁' : '⚪ 目前狀態：已關閉隱藏'}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setTempNoticeEnabled(!tempNoticeEnabled)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${tempNoticeEnabled ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}
-              >
+              <button type="button" onClick={() => setTempNoticeEnabled(!tempNoticeEnabled)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${tempNoticeEnabled ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>
                 {tempNoticeEnabled ? '顯示中' : '已關閉'}
               </button>
             </div>
 
-            <label className="text-[10px] text-gray-500 ml-1">公告內容文字 (超長文字會自動無縫循環跑馬燈)</label>
-            <textarea
-              rows={4}
-              value={tempNoticeText}
-              onChange={(e) => setTempNoticeText(e.target.value)}
-              placeholder="請輸入欲在首頁展示的公告內容..."
-              className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none text-xs font-black text-black placeholder:text-gray-400 border border-gray-200 mt-1 mb-6 leading-relaxed"
-            />
+            <label className="text-[10px] text-gray-500 ml-1">公告內容文字</label>
+            <textarea rows={4} value={tempNoticeText} onChange={(e) => setTempNoticeText(e.target.value)} className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none text-xs font-black text-black border border-gray-200 mt-1 mb-6 leading-relaxed" />
 
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowNoticeAdminModal(false)}
-                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onUpdateNotice(tempNoticeText.trim());
-                  onUpdateNoticeEnabled(tempNoticeEnabled);
-                  alert(`✅ 公告已成功儲存！當前狀態：${tempNoticeEnabled ? '【開啟顯示】' : '【關閉隱藏】'}`);
-                  setShowNoticeAdminModal(false);
-                }}
-                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md italic"
-              >
-                ✓ 儲存套用
-              </button>
+              <button type="button" onClick={() => setShowNoticeAdminModal(false)} className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black">取消</button>
+              <button type="button" onClick={() => { onUpdateNotice(tempNoticeText.trim()); onUpdateNoticeEnabled(tempNoticeEnabled); setShowNoticeAdminModal(false); }} className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md italic">✓ 儲存套用</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Wayne 管理員自訂版本日誌中心 */}
       {showChangelogAdminModal && (
         <div className="fixed inset-0 bg-black/80 z-[140] p-4 flex items-center justify-center">
           <div className="bg-white w-full max-w-lg max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95">
@@ -1147,193 +1180,57 @@ function TripSelector({
                 <h3 className="text-lg font-black text-black">管理版本日誌</h3>
                 <p className="text-[10px] text-gray-400 font-mono">Wayne Only · 每個版本皆可獨立開關顯示</p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setShowChangelogAdminModal(false)} 
-                className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black active:scale-90 transition-transform"
-              >
-                ✕
-              </button>
+              <button type="button" onClick={() => setShowChangelogAdminModal(false)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black">✕</button>
             </div>
 
             <div className="overflow-y-auto flex-1 pr-1 space-y-4">
               {editingLogItem ? (
                 <div className="bg-gray-50 p-4 rounded-3xl border border-gray-200 space-y-3">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-xs text-indigo-600 font-black">
-                      {editingLogItem.id ? '🖋️ 編輯版本日誌' : '➕ 新增版本日誌'}
-                    </h4>
-                    <button type="button" onClick={() => setEditingLogItem(null)} className="text-xs text-gray-400 hover:text-black">取消</button>
+                    <h4 className="text-xs text-indigo-600 font-black">{editingLogItem.id ? '🖋️ 編輯版本日誌' : '➕ 新增版本日誌'}</h4>
+                    <button type="button" onClick={() => setEditingLogItem(null)} className="text-xs text-gray-400">取消</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      placeholder="版本號 (如 v2.4)"
-                      value={editingLogItem.version}
-                      onChange={e => setEditingLogItem({ ...editingLogItem, version: e.target.value })}
-                      className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
-                    />
-                    <input
-                      type="date"
-                      value={editingLogItem.date}
-                      onChange={e => setEditingLogItem({ ...editingLogItem, date: e.target.value })}
-                      className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
-                    />
+                    <input type="text" placeholder="版本號 (如 v2.5)" value={editingLogItem.version} onChange={e => setEditingLogItem({ ...editingLogItem, version: e.target.value })} className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
+                    <input type="date" value={editingLogItem.date} onChange={e => setEditingLogItem({ ...editingLogItem, date: e.target.value })} className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
                   </div>
-                  <input
-                    type="text"
-                    placeholder="標題 (如: 新增日誌按讚留言功能)"
-                    value={editingLogItem.title}
-                    onChange={e => setEditingLogItem({ ...editingLogItem, title: e.target.value })}
-                    className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none"
-                  />
-                  <label className="text-[10px] text-gray-400 block ml-1">更新項目說明 (每換一行代表一個項目點)：</label>
-                  <textarea
-                    rows={3}
-                    placeholder="項目 1&#10;項目 2&#10;項目 3..."
-                    value={editingLogItem.itemsText}
-                    onChange={e => setEditingLogItem({ ...editingLogItem, itemsText: e.target.value })}
-                    className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none leading-relaxed"
-                  />
-
-                  <div className="flex justify-between items-center p-2.5 bg-white rounded-xl border border-gray-100">
-                    <span className="text-xs text-gray-600 font-black">此版本是否公開顯示？</span>
-                    <button
-                      type="button"
-                      onClick={() => setEditingLogItem({ ...editingLogItem, enabled: !editingLogItem.enabled })}
-                      className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${editingLogItem.enabled ? 'bg-emerald-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'}`}
-                    >
-                      {editingLogItem.enabled ? '🟢 顯示中' : '⚪ 已隱藏'}
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!editingLogItem.version.trim() || !editingLogItem.title.trim()) {
-                        return alert("請填寫版本號與標題！");
-                      }
-                      const parsedItems = editingLogItem.itemsText
-                        .split('\n')
-                        .map(s => s.trim())
-                        .filter(Boolean);
-
-                      let nextLogs: ChangelogItem[];
-                      if (editingLogItem.id) {
-                        nextLogs = changelogs.map(l => l.id === editingLogItem.id ? {
-                          id: l.id,
-                          version: editingLogItem.version.trim(),
-                          date: editingLogItem.date,
-                          title: editingLogItem.title.trim(),
-                          items: parsedItems,
-                          enabled: editingLogItem.enabled
-                        } : l);
-                      } else {
-                        nextLogs = [{
-                          id: Date.now().toString(),
-                          version: editingLogItem.version.trim(),
-                          date: editingLogItem.date || getTodayDateString(),
-                          title: editingLogItem.title.trim(),
-                          items: parsedItems,
-                          enabled: editingLogItem.enabled
-                        }, ...changelogs];
-                      }
-                      onUpdateChangelogs(nextLogs);
-                      setEditingLogItem(null);
-                      alert("✅ 版本日誌已儲存更新！");
-                    }}
-                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-md active:scale-98 transition-transform"
-                  >
-                    ✓ 儲存此版本
-                  </button>
+                  <input type="text" placeholder="標題" value={editingLogItem.title} onChange={e => setEditingLogItem({ ...editingLogItem, title: e.target.value })} className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
+                  <textarea rows={3} placeholder="項目說明 (每行一項)" value={editingLogItem.itemsText} onChange={e => setEditingLogItem({ ...editingLogItem, itemsText: e.target.value })} className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none leading-relaxed" />
+                  <button type="button" onClick={() => {
+                    const parsed = editingLogItem.itemsText.split('\n').map(s => s.trim()).filter(Boolean);
+                    const next = editingLogItem.id ? changelogs.map(l => l.id === editingLogItem.id ? { ...l, version: editingLogItem.version, date: editingLogItem.date, title: editingLogItem.title, items: parsed, enabled: editingLogItem.enabled } : l) : [{ id: Date.now().toString(), version: editingLogItem.version, date: editingLogItem.date, title: editingLogItem.title, items: parsed, enabled: editingLogItem.enabled }, ...changelogs];
+                    onUpdateChangelogs(next);
+                    setEditingLogItem(null);
+                  }} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-md">✓ 儲存此版本</button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingLogItem({
-                    id: '',
-                    version: '',
-                    date: getTodayDateString(),
-                    title: '',
-                    itemsText: '',
-                    enabled: true
-                  })}
-                  className="w-full py-3 border-2 border-dashed border-indigo-200 hover:border-indigo-400 text-indigo-600 hover:bg-indigo-50 rounded-2xl text-xs font-black transition-colors"
-                >
-                  + 新增一筆版本日誌
-                </button>
+                <button type="button" onClick={() => setEditingLogItem({ id: '', version: '', date: getTodayDateString(), title: '', itemsText: '', enabled: true })} className="w-full py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-2xl text-xs font-black">+ 新增一筆版本日誌</button>
               )}
 
-              <div className="space-y-2.5">
-                <p className="text-[10px] text-gray-400 ml-1">所有版本列表 ({changelogs.length})：</p>
-                {changelogs.map(log => (
-                  <div key={log.id} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-start">
+<div className="space-y-2.5">
+  {changelogs.map((log, idx) => (
+    <div key={`${log.id}-${idx}`} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-start">
                     <div className="flex-1 mr-2 overflow-hidden">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded font-black">{log.version}</span>
                         <span className="text-[10px] text-gray-400 font-mono">{log.date}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = changelogs.map(l => l.id === log.id ? { ...l, enabled: !l.enabled } : l);
-                            onUpdateChangelogs(next);
-                          }}
-                          className={`text-[9px] px-2 py-0.5 rounded-full font-black ml-1 transition-all ${log.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-500'}`}
-                          title="點擊切換此版本是否公開"
-                        >
-                          {log.enabled ? '🟢 顯示中' : '⚪ 已隱藏'}
-                        </button>
+                        <button type="button" onClick={() => onUpdateChangelogs(changelogs.map(l => l.id === log.id ? { ...l, enabled: !l.enabled } : l))} className={`text-[9px] px-2 py-0.5 rounded-full font-black ${log.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-500'}`}>{log.enabled ? '🟢 顯示中' : '⚪ 已隱藏'}</button>
                       </div>
                       <p className="text-xs font-black text-black mt-1 truncate">{log.title}</p>
-                      <p className="text-[10px] text-gray-500 font-normal mt-0.5">{log.items.length} 個更新條目</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center mt-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingLogItem({
-                          id: log.id,
-                          version: log.version,
-                          date: log.date,
-                          title: log.title,
-                          itemsText: log.items.join('\n'),
-                          enabled: log.enabled ?? true
-                        })}
-                        className="p-1.5 text-xs text-blue-500 hover:bg-blue-50 rounded-lg active:scale-90"
-                        title="編輯此版本"
-                      >
-                        🖋️
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`確定要刪除版本【${log.version}】嗎？`)) {
-                            const next = changelogs.filter(l => l.id !== log.id);
-                            onUpdateChangelogs(next);
-                          }
-                        }}
-                        className="p-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg active:scale-90"
-                        title="刪除此版本"
-                      >
-                        🗑️
-                      </button>
+                    <div className="flex gap-2 shrink-0 items-center">
+                      <button type="button" onClick={() => setEditingLogItem({ id: log.id, version: log.version, date: log.date, title: log.title, itemsText: log.items.join('\n'), enabled: log.enabled })} className="p-1.5 text-xs text-blue-500">🖋️</button>
+                      <button type="button" onClick={() => onUpdateChangelogs(changelogs.filter(l => l.id !== log.id))} className="p-1.5 text-xs text-red-500">🗑️</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowChangelogAdminModal(false)}
-              className="w-full mt-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl text-xs font-black shrink-0 transition-colors"
-            >
-              完成並關閉
-            </button>
+            <button type="button" onClick={() => setShowChangelogAdminModal(false)} className="w-full mt-4 py-3 bg-gray-100 text-gray-700 rounded-2xl text-xs font-black">完成並關閉</button>
           </div>
         </div>
       )}
 
-      {/* 「行程基本資料設定」彈窗 */}
       {editingTripSetting && (
         <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black my-auto">
@@ -1343,280 +1240,93 @@ function TripSelector({
             <div className="flex flex-col items-center gap-3 mb-5">
               <div className="w-20 h-20 bg-[#F2F1EB] rounded-[28px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-[#5E9E8E]">
                 {editingTripSetting.emoji && (editingTripSetting.emoji.startsWith('data:image') || editingTripSetting.emoji.startsWith('http')) ? (
-                  <img src={editingTripSetting.emoji} className="w-full h-full object-cover" alt="preview" />
+                  <img src={editingTripSetting.emoji} className="w-full h-full object-cover" />
                 ) : (
                   <span>{editingTripSetting.emoji || '☃️'}</span>
                 )}
               </div>
-              <ImageUploader 
-                label="上傳自訂照片為封面" 
-                maxDimension={350} 
-                onUpload={(b64) => setEditingTripSetting({ ...editingTripSetting, emoji: b64 })} 
-              />
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full">
-                {PRESET_TRIP_ICONS.map((icon) => (
-                  <button
-                    key={icon}
-                    type="button"
-                    onClick={() => setEditingTripSetting({ ...editingTripSetting, emoji: icon })}
-                    className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center shrink-0 transition-all ${editingTripSetting.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'bg-gray-100'}`}
-                  >
-                    {icon}
-                  </button>
-                ))}
-              </div>
+              <ImageUploader label="上傳自訂照片為封面" maxDimension={350} onUpload={(b64) => setEditingTripSetting({ ...editingTripSetting, emoji: b64 })} />
             </div>
 
             <div className="mb-4">
-              <label className="text-[10px] text-gray-500 font-black ml-1">行程名稱 (Trip Title)</label>
-              <input
-                type="text"
-                placeholder="輸入行程名稱..."
-                value={editingTripSetting.title}
-                onChange={(e) => setEditingTripSetting({ ...editingTripSetting, title: e.target.value })}
-                className="w-full p-4 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 mt-1"
-              />
+              <label className="text-[10px] text-gray-500 font-black ml-1">行程名稱</label>
+              <input type="text" value={editingTripSetting.title} onChange={(e) => setEditingTripSetting({ ...editingTripSetting, title: e.target.value })} className="w-full p-4 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black mt-1" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="text-[10px] text-gray-500 font-black ml-1">開始日期</label>
-                <input
-                  type="date"
-                  value={editingTripSetting.startDate}
-                  onChange={(e) => setEditingTripSetting({ ...editingTripSetting, startDate: e.target.value })}
-                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-gray-500 font-black ml-1">結束日期</label>
-                <input
-                  type="date"
-                  value={editingTripSetting.endDate}
-                  onChange={(e) => setEditingTripSetting({ ...editingTripSetting, endDate: e.target.value })}
-                  className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1"
-                />
-              </div>
-            </div>
-
-            <div className={`p-3 rounded-2xl mb-6 text-xs border ${editingTripDaysInfo.diff < 0 ? 'bg-red-50 text-red-700 border-red-200' : editingTripDaysInfo.diff > 0 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
-              <p className="font-black">
-                📅 行程長度：{editingTripDaysInfo.newDays} 天
-                {editingTripDaysInfo.diff === 0 && ' (天數相同，排程與消費紀錄自動平移)'}
-                {editingTripDaysInfo.diff > 0 && ` (增加 ${editingTripDaysInfo.diff} 天，前段紀錄平移，新增天數空白)`}
-                {editingTripDaysInfo.diff < 0 && ` (減少 ${Math.abs(editingTripDaysInfo.diff)} 天，超出天數的行程將被清除)`}
-              </p>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div><label className="text-[10px] text-gray-500 font-black ml-1">開始日期</label><input type="date" value={editingTripSetting.startDate} onChange={(e) => setEditingTripSetting({ ...editingTripSetting, startDate: e.target.value })} className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" /></div>
+              <div><label className="text-[10px] text-gray-500 font-black ml-1">結束日期</label><input type="date" value={editingTripSetting.endDate} onChange={(e) => setEditingTripSetting({ ...editingTripSetting, endDate: e.target.value })} className="w-full p-3.5 bg-gray-50 rounded-2xl text-xs outline-none font-black text-black border border-gray-200 mt-1" /></div>
             </div>
 
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setEditingTripSetting(null)}
-                className="flex-1 py-4 bg-gray-100 rounded-3xl font-black text-xs"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveTripSettings}
-                className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl font-black text-xs shadow-md italic"
-              >
-                ✓ 儲存修改
-              </button>
+              <button type="button" onClick={() => setEditingTripSetting(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black text-xs">取消</button>
+              <button type="button" onClick={handleSaveTripSettings} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl font-black text-xs shadow-md italic">✓ 儲存修改</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 輸入旅行代碼加入彈窗 */}
       {showJoinTripModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
             <h3 className="text-center italic mb-2 uppercase text-xl">加入旅行計劃</h3>
-            <p className="text-xs text-gray-400 text-center mb-6">請向旅伴索取 6 位數旅行代碼（例如 TK82M9）</p>
-
-            <input
-              type="text"
-              placeholder="輸入 6 位英文或數字代碼..."
-              value={joinCodeInput}
-              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-              maxLength={6}
-              className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200 text-black font-black"
-            />
-
+            <input type="text" placeholder="輸入 6 位代碼..." value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())} maxLength={6} className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200" />
             <div className="flex gap-4">
-              <button onClick={() => setShowJoinTripModal(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  const trimmed = joinCodeInput.trim().toUpperCase();
-                  if (!trimmed) return alert("請輸入 6 位代碼！");
-                  onJoinTrip(trimmed);
-                  setShowJoinTripModal(false);
-                }}
-                className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black"
-              >
-                確認加入
-              </button>
+              <button onClick={() => setShowJoinTripModal(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">取消</button>
+              <button onClick={() => { if (!joinCodeInput.trim()) return; onJoinTrip(joinCodeInput.trim().toUpperCase()); setShowJoinTripModal(false); }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">確認加入</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 建立新行程彈窗 */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
-             <h3 className="text-xl mb-4 italic uppercase tracking-tighter">Setup New Trip</h3>
-             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 text-center">
-               <p className="text-[10px] text-emerald-700 font-black">自動生成專屬旅行代碼（旅伴輸入即可加入）</p>
-               <p className="text-2xl font-mono text-emerald-900 font-black tracking-widest mt-0.5">{newTrip.joinCode}</p>
-             </div>
-
-             <div className="mb-4">
-               <label className="text-[10px] text-gray-500 ml-1 font-black">旅行專屬圖示</label>
-               <div className="flex gap-2 items-center mt-1">
-                 <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl shrink-0 overflow-hidden border border-gray-200">
-                   {newTrip.emoji && (newTrip.emoji.startsWith('data:image') || newTrip.emoji.startsWith('http')) ? (
-                     <img src={newTrip.emoji} className="w-full h-full object-cover" />
-                   ) : (
-                     <span>{newTrip.emoji || '☃️'}</span>
-                   )}
-                 </div>
-                 <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
-                   {PRESET_TRIP_ICONS.slice(0, 7).map((icon) => (
-                     <button
-                       key={icon}
-                       type="button"
-                       onClick={() => setNewTrip({ ...newTrip, emoji: icon })}
-                       className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all ${newTrip.emoji === icon ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-50'}`}
-                     >
-                       {icon}
-                     </button>
-                   ))}
-                 </div>
-               </div>
-               <div className="mt-2">
-                 <ImageUploader label="上傳自訂照片為行程封面" maxDimension={300} onUpload={(b64) => setNewTrip({ ...newTrip, emoji: b64 })} />
-               </div>
-             </div>
-
-             <input placeholder="Trip Title (e.g. 2026 東京行)" value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" />
+             <h3 className="text-xl mb-4 italic uppercase">Setup New Trip</h3>
+             <input placeholder="Trip Title..." value={newTrip.title} onChange={e=>setNewTrip({...newTrip, title:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black" />
              <div className="grid grid-cols-2 gap-4 mb-6">
-               <div>
-                 <label className="text-[10px] text-gray-500 ml-1 font-black">開始日期</label>
-                 <input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" />
-               </div>
-               <div>
-                 <label className="text-[10px] text-gray-500 ml-1 font-black">結束日期</label>
-                 <input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" />
-               </div>
+               <div><label className="text-[10px] text-gray-500 font-black">開始日期</label><input type="date" value={newTrip.startDate} onChange={e=>setNewTrip({...newTrip, startDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" /></div>
+               <div><label className="text-[10px] text-gray-500 font-black">結束日期</label><input type="date" value={newTrip.endDate} onChange={e=>setNewTrip({...newTrip, endDate:e.target.value})} className="p-4 bg-gray-50 rounded-2xl text-xs outline-none w-full mt-1 font-black text-black border border-gray-200" /></div>
              </div>
-
              <div className="flex gap-4">
                 <button onClick={()=>setShowAddTrip(false)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
-                <button onClick={()=>{
-                  if(!newTrip.title.trim()) return alert("請輸入旅行名稱！");
-                  onAddTrip({...newTrip, id: Date.now().toString()});
-                  setShowAddTrip(false);
-                  const today = getTodayDateString();
-                  setNewTrip({id:'', title:'', startDate: today, endDate: today, emoji:'☃️', memberIds:[user.id], joinCode: generateJoinCode(allTrips)});
-                }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Create Trip</button>
+                <button onClick={()=>{ if(!newTrip.title.trim()) return alert("請輸入旅行名稱！"); onAddTrip({...newTrip, id: Date.now().toString()}); setShowAddTrip(false); }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Create</button>
              </div>
           </div>
         </div>
       )}
 
-      {/* Wayne 更換登入頁面圖示彈窗 */}
       {showLoginIconModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
             <h3 className="text-center italic mb-4 uppercase text-lg">更換登入頁面圖示</h3>
-            <p className="text-xs text-gray-400 text-center mb-6">可上傳專屬 Logo 照片，或點選喜歡的 Emoji</p>
-            
             <div className="flex flex-col items-center gap-4 mb-6">
               <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] flex items-center justify-center text-4xl shadow-md overflow-hidden border-2 border-white">
-                {loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http')) ? (
-                  <img src={loginIcon} className="w-full h-full object-cover" alt="icon preview" />
-                ) : (
-                  <span>{loginIcon || '❄️'}</span>
-                )}
+                {loginIcon && (loginIcon.startsWith('data:image') || loginIcon.startsWith('http')) ? <img src={loginIcon} className="w-full h-full object-cover" /> : <span>{loginIcon || '❄️'}</span>}
               </div>
-              <ImageUploader label="上傳自訂圖案 (可調整大小)" maxDimension={300} onUpload={(b64) => onUpdateLoginIcon(b64)} />
+              <ImageUploader label="上傳自訂圖案" maxDimension={300} onUpload={(b64) => onUpdateLoginIcon(b64)} />
             </div>
-
-            <div className="flex gap-2 mb-6">
-              {['❄️', '☃️', '🌸', '✈️', '🐶', '🍙'].map((emoji) => (
-                <button key={emoji} onClick={() => onUpdateLoginIcon(emoji)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xl">
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={() => { onUpdateLoginIcon('❄️'); alert("已還原為預設雪花！"); }} className="py-4 px-4 bg-gray-100 rounded-3xl text-xs font-black">
-                還原雪花
-              </button>
-              <button onClick={() => setShowLoginIconModal(false)} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl font-black">
-                完成設定
-              </button>
-            </div>
+            <button onClick={() => setShowLoginIconModal(false)} className="w-full py-4 bg-[#86A760] text-white rounded-3xl font-black">完成設定</button>
           </div>
         </div>
       )}
 
-      {/* 使用者管理名冊（頂部標題與 ✕ 固定置頂，清單內部滾動） */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
-              <div>
-                <h3 className="text-lg font-black text-black">USER ADMIN</h3>
-                <p className="text-[10px] text-gray-400 font-mono">Wayne Only · 共 {allMembers.length} 位成員</p>
-              </div>
-              <button 
-                type="button" 
-                onClick={() => setShowUserAdmin(false)} 
-                className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black active:scale-90 transition-transform"
-              >
-                ✕
-              </button>
+              <h3 className="text-lg font-black text-black">USER ADMIN</h3>
+              <button type="button" onClick={() => setShowUserAdmin(false)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black">✕</button>
             </div>
-
-            <button 
-              type="button" 
-              onClick={() => setEditingMember({id: Date.now().toString(), account:'', name:'', loginCode:'', avatar: PRESET_ANIMAL_AVATARS[0], editLogs:['Account created']})} 
-              className="w-full py-3 border-2 border-dashed border-gray-200 hover:border-emerald-300 rounded-2xl mb-4 text-gray-400 hover:text-emerald-600 text-xs font-black shrink-0 transition-colors"
-            >
-              + NEW USER
-            </button>
-
             <div className="space-y-3 overflow-y-auto flex-1 pr-1">
               {allMembers.map(m => (
                 <div key={m.id} className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-2xl shadow-xs">
                   <img src={m.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
                   <div className="flex-1 overflow-hidden font-black">
                     <p className="text-xs font-black text-black truncate">{m.name}</p>
-                    <p className="text-[9px] text-gray-400 font-mono truncate">帳號: {m.account || m.loginCode} | 密碼: {m.loginCode}</p>
+                    <p className="text-[9px] text-gray-400 font-mono">帳號: {m.account || m.loginCode}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button type="button" onClick={() => setEditingMember(m)} className="text-xs text-blue-500 hover:underline font-black">Edit</button>
-                    {(m.account || m.loginCode) !== 'wayne' && (
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          if (confirm(`確定要徹底刪除用戶「${m.name}」嗎？\n（其過去記錄的記帳、日誌等資料仍會完整保留）`)) {
-                            const nextMembers = allMembers.filter(item => item.id !== m.id);
-                            onUpdateMembers(nextMembers);
-                          }
-                        }} 
-                        className="text-xs text-red-500 hover:underline font-black ml-1"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
+                  <button type="button" onClick={() => setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
                 </div>
               ))}
             </div>
@@ -1624,81 +1334,31 @@ function TripSelector({
         </div>
       )}
 
-      {/* 個人設定彈窗 */}
       {editingMember && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
-          <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
-            <h3 className="text-center italic mb-8 uppercase text-xl">設定個人資料</h3>
-            <div className="flex flex-col items-center gap-4 mb-4">
-              <img src={editingMember.avatar || PRESET_ANIMAL_AVATARS[0]} className="w-24 h-24 rounded-full border-4 border-gray-100 object-cover shadow-md" />
-              <div className="flex gap-2">
-                {PRESET_ANIMAL_AVATARS.map((av, idx) => (
-                  <img key={idx} src={av} onClick={() => setEditingMember({...editingMember, avatar: av})} className="w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition-transform border border-gray-200" />
-                ))}
-              </div>
-              <ImageUploader label="上傳相片 (可縮放移動調整)" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
+        <div className="fixed inset-0 bg-black/80 z-[110] p-4 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <h3 className="text-lg italic uppercase text-black">設定個人資料</h3>
+              <button type="button" onClick={() => setEditingMember(null)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black">✕</button>
             </div>
-
-            <label className="text-[10px] text-gray-500 ml-2 font-black">
-              登入帳號 (Account) {isWayne ? '（管理員可修改，限英文數字）' : '（帳號固定不可變更）'}
-            </label>
-            <input 
-              placeholder="Account" 
-              value={editingMember.account || editingMember.loginCode} 
-              disabled={!isWayne}
-              onChange={e=>setEditingMember({...editingMember, account: e.target.value.toLowerCase()})} 
-              className={`w-full p-4 rounded-2xl mb-4 outline-none border font-black font-mono text-xs ${isWayne ? 'bg-gray-50 text-black border-gray-200' : 'bg-gray-100 text-gray-500 border-gray-100 cursor-not-allowed'}`} 
-            />
-            
-            <label className="text-[10px] text-gray-500 ml-2 font-black">用戶名稱 (Name - 可中文，不可重複)</label>
-            <input placeholder="Name" value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-4 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
-            
-            <label className="text-[10px] text-gray-500 ml-2 font-black">登入密碼 (Password)</label>
-            <input placeholder="Password" value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl mb-8 outline-none border border-gray-200 font-black text-black placeholder:text-gray-400 text-xs" />
-            
-            <div className="flex gap-4">
-              <button onClick={()=>setEditingMember(null)} className="flex-1 py-4 bg-gray-100 rounded-3xl font-black">Cancel</button>
-              <button onClick={()=>{
-                const trimmedName = editingMember.name.trim();
-                if (!trimmedName) return alert("❌ 請輸入用戶名稱！");
-
-                const nameConflict = allMembers.some(m => m.id !== editingMember.id && m.name.toLowerCase() === trimmedName.toLowerCase());
-                if (nameConflict) return alert("❌ 該用戶名稱已被他人使用，請更換！");
-
-                const targetAccount = (editingMember.account || editingMember.loginCode).trim().toLowerCase();
-                if (isWayne) {
-                  if (!targetAccount) return alert("❌ 帳號不可為空！");
-                  if (!/^[a-zA-Z0-9_-]+$/.test(targetAccount)) {
-                    return alert("❌ 帳號必須為英文或數字！");
-                  }
-                  const accountConflict = allMembers.some(m => m.id !== editingMember.id && (m.account || m.loginCode).toLowerCase() === targetAccount);
-                  if (accountConflict) return alert("❌ 該帳號已被他人使用，請更換！");
-                }
-
-                const trimmedPassword = editingMember.loginCode.trim();
-                if (!trimmedPassword) return alert("❌ 請輸入密碼！");
-
-                const timestamp = new Date().toLocaleString();
-                const newLogs = [...(editingMember.editLogs || []), `${user.name} modified at ${timestamp}`];
-                const finalMember = { 
-                  ...editingMember, 
-                  account: targetAccount,
-                  name: trimmedName, 
-                  loginCode: trimmedPassword, 
-                  editLogs: newLogs 
-                };
-                
-                const nextMembers = allMembers.map(m => m.id === finalMember.id ? finalMember : m);
-
+            <div className="overflow-y-auto flex-1 pr-1 space-y-3.5">
+              <div className="flex flex-col items-center gap-2 mb-2">
+                <img src={editingMember.avatar || PRESET_ANIMAL_AVATARS[0]} className="w-20 h-20 rounded-full border-4 border-gray-100 object-cover shadow-md" />
+                <ImageUploader label="上傳相片" maxDimension={300} onUpload={(b64)=>setEditingMember({...editingMember, avatar:b64})} />
+              </div>
+              <label className="text-[10px] text-gray-500 ml-2 font-black">用戶名稱</label>
+              <input value={editingMember.name} onChange={e=>setEditingMember({...editingMember, name:e.target.value})} className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black text-xs" />
+              <label className="text-[10px] text-gray-500 ml-2 font-black">密碼</label>
+              <input value={editingMember.loginCode} onChange={e=>setEditingMember({...editingMember, loginCode:e.target.value})} className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 font-black text-black text-xs" />
+            </div>
+            <div className="flex gap-3 mt-4 pt-3 border-t border-gray-100 shrink-0">
+              <button type="button" onClick={()=>setEditingMember(null)} className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black">取消</button>
+              <button type="button" onClick={()=>{
+                const nextMembers = allMembers.map(m => m.id === editingMember.id ? editingMember : m);
                 onUpdateMembers(nextMembers);
-                
-                if (finalMember.id === user.id) {
-                  onUpdateUser(finalMember);
-                }
-
-                alert("✅ 資料修改成功！");
+                if (editingMember.id === user.id) onUpdateUser(editingMember);
                 setEditingMember(null);
-              }} className="flex-1 py-4 bg-[#86A760] text-white rounded-3xl shadow-lg italic font-black">Save</button>
+              }} className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md italic">✓ 儲存修改</button>
             </div>
           </div>
         </div>
@@ -1707,21 +1367,34 @@ function TripSelector({
   );
 }
 
-// 3. 主程式元件
-function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdateTrip, onUpdateUser }: { onBack: () => void, user: Member, tripData: Trip, allMembers: Member[], onUpdateMembers: any, onUpdateTrip: (updated: Trip) => void, onUpdateUser: (u: Member) => void }) {
+// 3. 主畫面 (MainApp)
+function MainApp({ 
+  onBack, 
+  user, 
+  tripData, 
+  allMembers, 
+  onUpdateMembers, 
+  onUpdateTrip, 
+  onUpdateUser 
+}: { 
+  onBack: () => void, 
+  user: Member, 
+  tripData: Trip, 
+  allMembers: Member[], 
+  onUpdateMembers: any, 
+  onUpdateTrip: (updated: Trip) => void, 
+  onUpdateUser: (u: Member) => void 
+}) {
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
   const [prepSubTab, setPrepSubTab] = useState('待辦');
   const [bookSubTab, setBookSubTab] = useState('機票'); 
-
+  const [voucherSubTab, setVoucherSubTab] = useState<'未使用' | '已使用'>('未使用');
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
-
   const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
 
-  const dynamicTripDates = useMemo(() => {
-    return getDatesList(tripData.startDate, tripData.endDate);
-  }, [tripData.startDate, tripData.endDate]);
+  const dynamicTripDates = useMemo(() => getDatesList(tripData.startDate, tripData.endDate), [tripData.startDate, tripData.endDate]);
 
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
   const [schedules, setSchedules] = useState<ScheduleData>({});
@@ -1733,27 +1406,20 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
 
   const [expandedComments, setExpandedComments] = useState<{ [journalId: number]: boolean }>({});
   const [commentInputs, setCommentInputs] = useState<{ [journalId: number]: string }>({});
+  const [replyingCommentIds, setReplyingCommentIds] = useState<{ [journalId: number]: number | null }>({});
+  const [replyInputs, setReplyInputs] = useState<{ [commentId: number]: string }>({});
 
-  const stateRef = useRef({
-    records,
-    schedules,
-    todos,
-    journals,
-    flights,
-    bookings,
-    cityConfigs
-  });
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
+  // 💥 V2.5 獨立新視窗編輯狀態 (Modal 控制)
+  const [editingVoucherModal, setEditingVoucherModal] = useState<BookingDoc | null>(null);
+  const [editingExpenseModal, setEditingExpenseModal] = useState<ExpenseRecord | null>(null);
+  const [editingJournalModal, setEditingJournalModal] = useState<JournalEntry | null>(null);
+  const [editingTodoModal, setEditingTodoModal] = useState<TodoItem | null>(null);
+
+  const stateRef = useRef({ records, schedules, todos, journals, flights, bookings, cityConfigs });
   useEffect(() => {
-    stateRef.current = {
-      records,
-      schedules,
-      todos,
-      journals,
-      flights,
-      bookings,
-      cityConfigs
-    };
+    stateRef.current = { records, schedules, todos, journals, flights, bookings, cityConfigs };
   }, [records, schedules, todos, journals, flights, bookings, cityConfigs]);
 
   const [newCityName, setNewCityName] = useState('');
@@ -1778,30 +1444,30 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
   });
 
   const [editingMemberModal, setEditingMemberModal] = useState<Member | null>(null);
-
   const [exchangeRates, setExchangeRates] = useState({ JPY: 0.22, TWD: 1.0, CNY: 4.5 });
-  const [currency, setCurrency] = useState<'JPY' | 'TWD' | 'CNY'>('JPY');
-
-  const defaultExpenseDate = useMemo(() => {
-    const todayShort = getTodayShortDateString();
-    if (dynamicTripDates.includes(todayShort)) return todayShort;
-    return dynamicTripDates[0] || todayShort;
-  }, [dynamicTripDates]);
+  
+  // 💥 記帳幣別自動記憶 (預設 JPY)
+  const [currency, setCurrency] = useState<'JPY' | 'TWD' | 'CNY'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dupi_preferred_currency');
+      if (saved === 'JPY' || saved === 'TWD' || saved === 'CNY') return saved;
+    }
+    return 'JPY';
+  });
 
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
   const [payMethod, setPayMethod] = useState('現金'); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
-  const [expenseDate, setExpenseDate] = useState(defaultExpenseDate);
-  const [customOtherDate, setCustomOtherDate] = useState(getTodayDateString());
 
-  const [newJournal, setNewJournal] = useState<{ content: string; image: string }>({ content: '', image: '' });
+  // 💥 日誌多圖與短影片輸入狀態
+  const [newJournalContent, setNewJournalContent] = useState('');
+  const [newJournalImages, setNewJournalImages] = useState<string[]>([]);
+  const [newJournalVideo, setNewJournalVideo] = useState('');
+
   const [newTodoInput, setNewTodoInput] = useState({ task: '', note: '', assigneeIds: [user.id] as string[] });
-  const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
-  const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
 
-  // 💥 行程景點編輯狀態（含點選鎖定標記）
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
   const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ title: string; subtitle: string; icon: string }>>([]);
@@ -1985,7 +1651,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return () => { isCancelled = true; };
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 💥 全球精確地標搜尋（含智慧去重、點選不重複彈出）
   useEffect(() => {
     if (isSelectingPlaceRef.current) {
       isSelectingPlaceRef.current = false;
@@ -2017,7 +1682,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               item.address?.country || ''
             ].filter(Boolean).join(', ');
 
-            // 智慧去重：如果完全一樣的名稱已存在，就不重複列出
             const key = `${shortName}-${addressParts}`;
             if (!seen.has(key)) {
               seen.add(key);
@@ -2027,7 +1691,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 icon: detectPlaceIcon(shortName)
               });
             }
-            if (formatted.length >= 5) break; // 只取前 5 個精選地標
+            if (formatted.length >= 5) break;
           }
 
           setPlaceSuggestions(formatted);
@@ -2044,7 +1708,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     return () => clearTimeout(timer);
   }, [planForm.title]);
 
-  // 城市天氣自動補全搜尋
   useEffect(() => {
     const q = newCityName.trim();
     if (q.length < 2) {
@@ -2113,15 +1776,36 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     sync({ journals: nextJournals });
   };
 
-  const handleAddComment = (journalId: number) => {
-    const text = (commentInputs[journalId] || '').trim();
+  const handleToggleCommentLike = (journalId: number, commentId: number) => {
+    const next = journals.map(j => {
+      if (j.id !== journalId) return j;
+      const nextComments = (j.comments || []).map(c => {
+        if (c.id !== commentId) return c;
+        const currentLikes = c.likes || [];
+        const hasLiked = currentLikes.includes(user.id);
+        return {
+          ...c,
+          likes: hasLiked ? currentLikes.filter(id => id !== user.id) : [...currentLikes, user.id]
+        };
+      });
+      return { ...j, comments: nextComments };
+    });
+    setJournals(next);
+    sync({ journals: next });
+  };
+
+  const handleAddComment = (journalId: number, replyToCommentId?: number) => {
+    const key = replyToCommentId ? `reply_${replyToCommentId}` : journalId;
+    const text = (commentInputs[key as any] || '').trim();
     if (!text) return alert("請輸入留言內容！");
 
     const newComment: JournalComment = {
       id: Date.now(),
       authorId: user.id,
       content: text,
-      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      likes: [],
+      replyToCommentId
     };
 
     const nextJournals = journals.map(j => {
@@ -2132,7 +1816,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
 
     setJournals(nextJournals);
     sync({ journals: nextJournals });
-    setCommentInputs({ ...commentInputs, [journalId]: '' });
+    setCommentInputs({ ...commentInputs, [key as any]: '' });
+    if (replyToCommentId) {
+      setReplyingCommentIds({ ...replyingCommentIds, [journalId]: null });
+    }
   };
 
   const handleDeleteComment = (journalId: number, commentId: number) => {
@@ -2147,6 +1834,43 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
     setJournals(nextJournals);
     sync({ journals: nextJournals });
   };
+
+  // 查帳統計與圓餅圖資料
+  const expenseStats = useMemo(() => {
+    const totalTwd = filteredRecords.reduce((sum, r) => sum + Number(r.twdAmount || 0), 0);
+    const categoryTotals: { [cat: string]: number } = {};
+    const dateGroups: { [groupName: string]: ExpenseRecord[] } = {};
+
+    filteredRecords.forEach(r => {
+      const c = r.category || '其他';
+      categoryTotals[c] = (categoryTotals[c] || 0) + Number(r.twdAmount || 0);
+
+      const dName = dynamicTripDates.some(d => r.date.startsWith(d))
+        ? r.date.split(' ')[0]
+        : '其他日期 (非旅行日)';
+      if (!dateGroups[dName]) dateGroups[dName] = [];
+      dateGroups[dName].push(r);
+    });
+
+    const palette = ['#5E9E8E', '#E9C46A', '#E76F51', '#2A9D8F', '#F4A261', '#457B9D', '#A8DADC', '#6D6875'];
+    let accumulated = 0;
+    const slices = Object.entries(categoryTotals).map(([cat, val], idx) => {
+      const pct = totalTwd > 0 ? (val / totalTwd) * 100 : 0;
+      const startAngle = accumulated * 3.6;
+      accumulated += pct;
+      const endAngle = accumulated * 3.6;
+      return {
+        cat,
+        val,
+        pct: Number(pct.toFixed(1)),
+        color: palette[idx % palette.length],
+        startAngle,
+        endAngle
+      };
+    });
+
+    return { totalTwd, categoryTotals, dateGroups, slices };
+  }, [filteredRecords, dynamicTripDates]);
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] font-sans pb-32 text-black font-black">
@@ -2402,27 +2126,135 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
               </div>
             ) : (
               <div className="space-y-6">
-                <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Vouchers</h3>
-                {bookings.map(b=>(
-                  <div key={b.id} className="bg-white p-6 rounded-[32px] shadow-xl border border-gray-50 group relative">
-                    <div className="flex justify-between mb-2">
-                      <h4 className="text-xs italic bg-orange-50 px-3 py-1 rounded-full font-black">🎫 {b.title}</h4>
-                      <div className="flex gap-2">
-                        <button onClick={()=>{const nt=prompt("憑證名稱:", b.title); if(nt){const n=bookings.map(i=>i.id===b.id?{...i, title:nt, lastUpdatedById: user.id}:i); setBookings(n); sync({bookings:n});}}} className="text-blue-400 text-xs font-black">🖋️</button>
-                        <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs font-black">✕</button>
-                      </div>
-                    </div>
-                    <p className="text-[9px] text-gray-400 mb-3 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
-                    {b.image && (
-                      <div className="w-full flex justify-center">
-                        <img src={b.image} className="w-full max-h-[500px] object-cover rounded-[24px] shadow-lg" alt="voucher" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center">
-                  <ImageUploader label="UPLOAD VOUCHER (可調整)" maxDimension={800} onUpload={(b64)=>{const title=prompt("請輸入憑證名稱:"); if(title){const n=[{id:Date.now(), type:'憑證', title, image:b64, lastUpdatedById: user.id}, ...bookings]; setBookings(n); sync({bookings:n});}}} />
+                {/* 💥 憑證上傳按鈕置頂 */}
+                <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center shadow-sm">
+                  <ImageUploader label="UPLOAD VOUCHER (新增憑證相片)" maxDimension={1200} onUpload={(b64)=>{
+                    const title=prompt("請輸入憑證名稱 (例如: 迪士尼門票):"); 
+                    if(title){
+                      const newDoc: BookingDoc = {
+                        id: Date.now(), 
+                        type: '憑證', 
+                        title: title.trim(), 
+                        image: b64, 
+                        lastUpdatedById: user.id,
+                        status: 'unused'
+                      };
+                      const n = [newDoc, ...bookings]; 
+                      setBookings(n); 
+                      sync({bookings:n});
+                    }
+                  }} />
                 </div>
+
+                {/* 未使用 / 已使用 狀態切換子分頁 */}
+                <div className="flex bg-gray-100 rounded-2xl p-1 font-black">
+                  <button 
+                    onClick={() => setVoucherSubTab('未使用')} 
+                    className={`flex-1 py-2.5 rounded-xl text-xs transition-all font-black ${voucherSubTab === '未使用' ? 'bg-white text-black shadow-sm' : 'text-gray-400'}`}
+                  >
+                    🎫 未使用 ({bookings.filter(b => (b.status || 'unused') === 'unused').length})
+                  </button>
+                  <button 
+                    onClick={() => setVoucherSubTab('已使用')} 
+                    className={`flex-1 py-2.5 rounded-xl text-xs transition-all font-black ${voucherSubTab === '已使用' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-400'}`}
+                  >
+                    ✅ 已使用 ({bookings.filter(b => b.status === 'used').length})
+                  </button>
+                </div>
+
+                <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">
+                  {voucherSubTab === '未使用' ? 'Unused Vouchers' : 'Used Vouchers'}
+                </h3>
+
+                {bookings.filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used').length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 text-xs bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                    <p>{voucherSubTab === '未使用' ? '目前沒有未使用的憑證' : '目前沒有已使用的憑證'}</p>
+                  </div>
+                ) : (
+                  bookings
+                    .filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used')
+                    .map(b => (
+                      <div key={b.id} className="bg-white p-6 rounded-[32px] shadow-xl border border-gray-50 group relative font-black">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="text-xs italic bg-orange-50 text-orange-900 px-3 py-1 rounded-full font-black">🎫 {b.title}</h4>
+                          <div className="flex gap-2 items-center">
+                            {/* 💥 獨立彈窗編輯憑證 */}
+                            <button onClick={() => setEditingVoucherModal(b)} className="text-blue-500 text-xs font-black p-1 hover:underline">🖋️ 編輯</button>
+                            <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs font-black p-1">✕</button>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center mb-3">
+                          <p className="text-[9px] text-gray-400 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
+                          {b.status === 'used' && (
+                            <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-black">
+                              ✅ 已由 {b.usedByMemberName || '未知成員'} 於 {b.usedAt || '剛剛'} 使用
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 💥 方案 1：長截圖取消固定高度限制，改為等比例完整顯示 + 自動滾動視窗 */}
+                        {b.image && (
+                          <div className="w-full max-h-[600px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 my-3 border border-gray-100">
+                            <div 
+                              onClick={() => setLightboxImg(b.image!)}
+                              className="w-full flex justify-center cursor-pointer hover:opacity-95 transition-opacity relative group"
+                              title="點擊放大圖片"
+                            >
+                              <img src={b.image} className="w-full object-contain rounded-[20px] shadow-sm" alt="voucher" />
+                              <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-[20px]">
+                                🔍 點擊放大
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 標記為已使用 / 取消使用 按鈕 */}
+                        {voucherSubTab === '未使用' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`確定要將憑證「${b.title}」標記為已使用嗎？`)) {
+                                const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const next = bookings.map(item => item.id === b.id ? {
+                                  ...item,
+                                  status: 'used' as const,
+                                  usedByMemberName: user.name,
+                                  usedAt: nowStr,
+                                  lastUpdatedById: user.id
+                                } : item);
+                                setBookings(next);
+                                sync({ bookings: next });
+                              }
+                            }}
+                            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform"
+                          >
+                            ✓ 標記為已使用
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`確定要將憑證「${b.title}」改回未使用的狀態嗎？`)) {
+                                const next = bookings.map(item => item.id === b.id ? {
+                                  ...item,
+                                  status: 'unused' as const,
+                                  usedByMemberName: undefined,
+                                  usedAt: undefined,
+                                  lastUpdatedById: user.id
+                                } : item);
+                                setBookings(next);
+                                sync({ bookings: next });
+                              }
+                            }}
+                            className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-2xl text-xs font-black active:scale-98 transition-transform"
+                          >
+                            ↺ 取消使用 (退回未使用)
+                          </button>
+                        )}
+                      </div>
+                    ))
+                )}
               </div>
             )}
           </div>
@@ -2439,62 +2271,31 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
             {expenseSubTab === '明細' ? (
               <>
                 <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
-                    <div className="flex gap-2 mb-4">
-                      {(['JPY', 'TWD', 'CNY'] as const).map(c => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setCurrency(c)}
-                          className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${currency === c ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
-                        >
-                          {c} ({c === 'JPY' ? '日幣' : c === 'TWD' ? '台幣' : '人民幣'})
-                        </button>
-                      ))}
-                    </div>
-
-                    <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">消費日期 (行程日與旅行外自訂)</p>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 items-center">
-                      {dynamicTripDates.map((dStr, idx) => (
-                        <button
-                          key={dStr}
-                          type="button"
-                          onClick={() => setExpenseDate(dStr)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition-all ${expenseDate === dStr ? 'bg-[#5E9E8E] text-white shadow-md scale-105' : 'bg-gray-100 text-gray-500'}`}
-                        >
-                          D{idx + 1}: {dStr}
-                        </button>
-                      ))}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const formatted = customOtherDate.slice(5).replace('-', '/') + ' (旅行外)';
-                          setExpenseDate(formatted);
+                    {/* 💥 幣別改為下拉式選單並記憶上次選擇 (預設 JPY) */}
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-xs text-gray-500">幣別選擇 (自動記憶)</span>
+                      <select
+                        value={currency}
+                        onChange={(e) => {
+                          const cur = e.target.value as 'JPY' | 'TWD' | 'CNY';
+                          setCurrency(cur);
+                          localStorage.setItem('dupi_preferred_currency', cur);
                         }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition-all ${expenseDate.includes('旅行外') ? 'bg-[#E9C46A] text-white shadow-md scale-105' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}
+                        className="p-2.5 px-4 bg-gray-100 rounded-xl text-xs font-black text-black outline-none border border-gray-200"
                       >
-                        🗓️ {expenseDate.includes('旅行外') ? expenseDate : '其他日期(旅行外)'}
-                      </button>
+                        <option value="JPY">🇯🇵 日幣 (JPY)</option>
+                        <option value="TWD">🇹🇼 台幣 (TWD)</option>
+                        <option value="CNY">🇨🇳 人民幣 (CNY)</option>
+                      </select>
                     </div>
-
-                    {expenseDate.includes('旅行外') && (
-                      <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded-2xl border border-gray-200">
-                        <span className="text-[10px] text-gray-500 font-black">選擇旅行外具體日期：</span>
-                        <input 
-                          type="date" 
-                          value={customOtherDate}
-                          onChange={(e) => {
-                            setCustomOtherDate(e.target.value);
-                            setExpenseDate(e.target.value.slice(5).replace('-', '/') + ' (旅行外)');
-                          }}
-                          className="bg-white p-1.5 px-3 rounded-xl text-xs font-black text-black outline-none border border-gray-200"
-                        />
-                      </div>
-                    )}
 
                     <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="消費內容 (項目)..." className="w-full p-4 bg-gray-50 rounded-2xl mb-2 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
+                    
+                    {/* 💥 消費類別加入宵夜 (排在晚餐後) 與其他 (最後面) */}
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3">
-                      {['早餐','午餐','晚餐','交通','娛樂','購物'].map(q=>(<button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-600 font-black shrink-0 active:bg-gray-200">{q}</button>))}
+                      {['早餐','午餐','晚餐','宵夜','交通','娛樂','購物','其他'].map(q=>(
+                        <button key={q} onClick={()=>setCategory(q)} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] text-gray-600 font-black shrink-0 active:bg-gray-200">{q}</button>
+                      ))}
                     </div>
                     
                     <input value={expenseNote} onChange={e=>setExpenseNote(e.target.value)} placeholder="備註說明 (選填)..." className="w-full p-3 bg-gray-50 rounded-xl mb-3 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
@@ -2527,31 +2328,34 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                       ))}
                     </div>
 
+                    {/* 💥 日期欄位取消手動選擇，直接記錄輸入當下的時間 */}
                     <button onClick={()=>{
                         if(!category.trim()) return alert("請輸入消費內容！");
                         if(!amount || Number(amount) <= 0) return alert("金額必須大於 0，不能為負數或空白！");
                         if(!expensePayerId) return alert("請選擇付款人！");
 
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
+                        const autoTimestamp = getNowTimestampString();
+
                         const rec: ExpenseRecord = {
-                          id: editingRecordId || Date.now(), 
+                          id: Date.now(), 
                           category: category.trim(), 
                           amount, 
                           currency, 
                           twdAmount: twdVal, 
                           payMethod, 
                           payerId: expensePayerId, 
-                          date: expenseDate,
+                          date: autoTimestamp,
                           note: expenseNote.trim(),
                           lastUpdatedById: user.id
                         };
-                        const n = editingRecordId ? records.map(r=>r.id===editingRecordId?rec:r) : [rec, ...records]; 
-                        setRecords(n); sync({records:n}); 
+                        const n = [rec, ...records]; 
+                        setRecords(n); 
+                        sync({records:n}); 
                         
-                        alert(editingRecordId ? "✅ 記帳紀錄已更新！" : "✅ 記帳成功！");
-
-                        setAmount(''); setCategory(''); setExpenseNote(''); setEditingRecordId(null);
-                    }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic">{editingRecordId?'UPDATE':'SAVE'}</button>
+                        alert("✅ 記帳成功！");
+                        setAmount(''); setCategory(''); setExpenseNote('');
+                    }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic">SAVE EXPENSE</button>
                 </div>
 
                 <div className="space-y-3 font-black">
@@ -2569,8 +2373,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                               {r.amount} {r.currency || 'JPY'}
                               <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
                             </div>
+                            {/* 💥 編輯改為獨立新視窗彈窗 */}
                             <div className="absolute right-4 flex flex-col gap-2">
-                              <button onClick={()=>{setEditingRecordId(r.id); setCategory(r.category); setAmount(r.amount); setExpenseNote(r.note || ''); setPayMethod(r.payMethod); setExpenseDate(r.date); setCurrency(r.currency || 'JPY'); setExpensePayerId(r.payerId); window.scrollTo({top:0, behavior:'smooth'});}} className="text-blue-400 text-[10px]">🖋️</button>
+                              <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
                               <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
                             </div>
                         </div>
@@ -2606,31 +2411,88 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     })}
                   </div>
 
-                  <div className="bg-[#5E9E8E]/10 p-5 rounded-2xl border border-[#5E9E8E]/20">
-                    <p className="text-xs opacity-70 uppercase">篩選統計總額 (折合台幣)</p>
-                    <h3 className="text-3xl font-mono mt-1 text-[#5E9E8E]">NT$ {filteredRecords.reduce((sum, r) => sum + Number(r.twdAmount), 0).toLocaleString()}</h3>
-                    <p className="text-[10px] text-gray-500 mt-1">共 {filteredRecords.length} 筆支出紀錄</p>
+                  <div className="bg-[#5E9E8E]/10 p-5 rounded-2xl border border-[#5E9E8E]/20 mb-6 text-center">
+                    <p className="text-xs opacity-70 uppercase font-black">篩選統計總額 (折合台幣)</p>
+                    <h3 className="text-3xl font-mono mt-1 text-[#5E9E8E]">NT$ {expenseStats.totalTwd.toLocaleString()}</h3>
+                    <p className="text-[10px] text-gray-500 mt-1 font-black">共 {filteredRecords.length} 筆支出紀錄</p>
+                  </div>
+
+                  {/* 💥 查帳統計新增圓餅圖 (分類佔比) */}
+                  <div className="mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                    <p className="text-xs text-gray-600 font-black mb-3">🍰 各分類支出佔比 (圓餅圖)</p>
+                    {expenseStats.totalTwd > 0 ? (
+                      <div className="flex flex-col sm:flex-row items-center justify-around gap-4">
+                        <svg className="w-36 h-36 -rotate-90" viewBox="0 0 36 36">
+                          {expenseStats.slices.map((slice, i) => {
+                            const strokeDasharray = `${slice.pct} ${100 - slice.pct}`;
+                            const strokeDashoffset = 100 - (slice.startAngle / 3.6);
+                            return (
+                              <circle
+                                key={i}
+                                cx="18"
+                                cy="18"
+                                r="15.915"
+                                fill="transparent"
+                                stroke={slice.color}
+                                strokeWidth="4"
+                                strokeDasharray={strokeDasharray}
+                                strokeDashoffset={strokeDashoffset}
+                              />
+                            );
+                          })}
+                        </svg>
+                        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+                          {expenseStats.slices.map((s, idx) => (
+                            <div key={idx} className="flex items-center justify-between gap-3 text-[11px]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }}></span>
+                                <span>{s.cat}</span>
+                              </div>
+                              <span className="font-mono text-gray-600 font-bold">NT$ {s.val.toLocaleString()} ({s.pct}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-4">尚無支出數據可供統計</p>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-xs text-gray-500 uppercase tracking-wider ml-1">支出明細列表</h4>
-                  {filteredRecords.map(r => (
-                    <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100">
-                      <div className="flex items-center gap-3">
-                        <img src={getMember(r.payerId).avatar} className="w-8 h-8 rounded-full object-cover" />
-                        <div>
-                          <p className="text-xs font-black text-black">{r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span></p>
-                          {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
-                          <p className="text-[9px] text-gray-400 font-mono mt-0.5">{r.payMethod} · 付款人: {getMember(r.payerId).name}</p>
+                {/* 💥 行程日期分類檢視 */}
+                <div className="space-y-4">
+                  <h4 className="text-xs text-gray-500 uppercase tracking-wider ml-1">📅 依行程日期分類檢視</h4>
+                  {Object.keys(expenseStats.dateGroups).length === 0 && (
+                    <div className="bg-white p-6 rounded-2xl text-center text-xs text-gray-400">目前沒有可供分類的消費明細</div>
+                  )}
+                  {Object.entries(expenseStats.dateGroups).map(([dateName, groupList]) => {
+                    const groupTotalTwd = groupList.reduce((sum, item) => sum + Number(item.twdAmount || 0), 0);
+                    return (
+                      <div key={dateName} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
+                          <span className="text-xs bg-[#5E9E8E]/10 text-[#5E9E8E] px-2.5 py-1 rounded-xl font-black">
+                            {dateName}
+                          </span>
+                          <span className="text-xs font-mono text-gray-500 font-black">小計: NT$ {groupTotalTwd.toLocaleString()}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {groupList.map(r => (
+                            <div key={r.id} className="flex justify-between items-center text-xs py-1.5 border-b border-dashed border-gray-100 last:border-b-0">
+                              <div>
+                                <span className="font-black text-black">{r.category}</span>
+                                <span className="text-[10px] text-gray-400 ml-2">({getMember(r.payerId).name} · {r.payMethod})</span>
+                                {r.note && <span className="text-[10px] text-gray-500 block">💬 {r.note}</span>}
+                              </div>
+                              <div className="text-right font-mono text-[#5E9E8E]">
+                                <span>{r.amount} {r.currency}</span>
+                                <span className="text-[9px] text-gray-400 block font-normal">≈ NT$ {r.twdAmount}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div className="text-right font-mono text-[#5E9E8E]">
-                        {r.amount} {r.currency || 'JPY'}
-                        <p className="text-[9px] text-gray-400">≈ NT$ {r.twdAmount}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -2642,51 +2504,96 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="bg-white p-6 rounded-[32px] shadow-xl border border-orange-50 font-black">
                 <textarea 
-                  value={newJournal.content} 
-                  onChange={e=>setNewJournal({...newJournal, content:e.target.value})} 
+                  value={newJournalContent} 
+                  onChange={e=>setNewJournalContent(e.target.value)} 
                   placeholder="記錄此刻的心情..." 
                   className="w-full bg-gray-50 p-4 rounded-2xl mb-3 outline-none min-h-[100px] font-black text-black placeholder:text-gray-400 border border-gray-200" 
                 />
 
-                {newJournal.image && (
-                  <div className="relative mb-3 inline-block">
-                    <img 
-                      src={newJournal.image} 
-                      alt="Thumbnail preview" 
-                      className="w-20 h-20 rounded-2xl object-cover border-2 border-[#5E9E8E] shadow-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setNewJournal({ ...newJournal, image: '' })}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-black shadow-md hover:bg-red-600"
-                      title="移除此照片"
-                    >
-                      ✕
-                    </button>
-                    <span className="text-[9px] text-gray-400 block mt-1">已選取預覽</span>
+                {/* 💥 多相片預覽列表 (上限 5 張) */}
+                {newJournalImages.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {newJournalImages.map((img, idx) => (
+                      <div key={idx} className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#5E9E8E]">
+                        <img src={img} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setNewJournalImages(newJournalImages.filter((_, i) => i !== idx))}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-black shadow-md"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                <div className="flex justify-between items-center">
-                    <ImageUploader 
-                      label={newJournal.image ? "更換照片" : "上傳相片 (支援裁切)"} 
-                      maxDimension={800} 
-                      onUpload={img => setNewJournal({...newJournal, image: img})} 
-                    />
+                {/* 💥 15 秒短影片預覽 */}
+                {newJournalVideo && (
+                  <div className="relative mb-3 inline-block">
+                    <video src={newJournalVideo} className="w-36 h-24 rounded-2xl object-cover border-2 border-[#E9C46A]" controls />
+                    <button
+                      type="button"
+                      onClick={() => setNewJournalVideo('')}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full text-xs flex items-center justify-center font-black shadow-md"
+                    >
+                      ✕
+                    </button>
+                    <span className="text-[9px] text-gray-400 block mt-1">15 秒短影片已就緒</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <ImageUploader 
+                        label={`相片上傳 (${newJournalImages.length}/5)`} 
+                        maxDimension={1000} 
+                        onUpload={img => {
+                          if (newJournalImages.length >= 5) return alert("每則日誌最多上傳 5 張相片！");
+                          setNewJournalImages([...newJournalImages, img]);
+                        }} 
+                      />
+
+                      {/* 💥 15 秒短影片上傳按鈕 */}
+                      <label className="text-[10px] bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-xl font-black text-black cursor-pointer shadow-sm active:scale-95 transition-all">
+                        🎬 上傳短影片 (15s)
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const b64 = await compressVideoFile(file, 15);
+                              setNewJournalVideo(b64);
+                            } catch (err) {}
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+
                     <button onClick={()=>{
-                        if(!newJournal.content.trim()) return alert("請輸入日誌內容！");
+                        if(!newJournalContent.trim() && newJournalImages.length === 0 && !newJournalVideo) return alert("請輸入日誌內容或上傳多媒體！");
                         const n: JournalEntry[] = [{
                           id: Date.now(), 
                           authorId: user.id, 
-                          content: newJournal.content.trim(), 
-                          image: newJournal.image, 
+                          content: newJournalContent.trim(), 
+                          image: newJournalImages[0] || '',
+                          images: newJournalImages,
+                          video: newJournalVideo,
                           date: new Date().toLocaleString(), 
                           lastUpdatedById: user.id,
                           likes: [],
                           comments: []
                         }, ...journals];
-                        setJournals(n); sync({journals:n}); setNewJournal({content:'', image:''});
-                    }} className="bg-[#86A760] text-white px-8 py-3 rounded-2xl shadow-lg italic font-black">Share</button>
+                        setJournals(n); 
+                        sync({journals:n}); 
+                        setNewJournalContent(''); 
+                        setNewJournalImages([]); 
+                        setNewJournalVideo('');
+                    }} className="bg-[#86A760] text-white px-8 py-3 rounded-2xl shadow-lg italic font-black active:scale-95 transition-transform">Share</button>
                 </div>
             </div>
 
@@ -2697,12 +2604,16 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                 const hasLiked = likes.includes(user.id);
                 const isCommentsOpen = !!expandedComments[j.id];
 
+                // 相容單張或多張照片
+                const allPhotos = j.images && j.images.length > 0 ? j.images : (j.image ? [j.image] : []);
+
                 return (
                   <div key={j.id} className="bg-white p-6 rounded-[32px] shadow-md border border-gray-100 animate-in slide-in-from-bottom-2 relative font-black">
                       <div className="absolute top-6 right-6 flex gap-3">
                         {(j.authorId === user.id || isWayne) && (
                           <>
-                            <button onClick={()=>{const nt=prompt("編輯日誌內容:", j.content); if(nt){const n=journals.map(i=>i.id===j.id?{...i, content:nt, lastUpdatedById: user.id}:i); setJournals(n); sync({journals:n});}}} className="text-blue-400 text-xs">🖋️</button>
+                            {/* 💥 日誌編輯改為獨立新視窗彈窗 */}
+                            <button onClick={()=>setEditingJournalModal(j)} className="text-blue-400 text-xs hover:underline">🖋️</button>
                             <button onClick={()=>{if(confirm('確定刪除此日誌？')){const n=journals.filter(i=>i.id!==j.id); setJournals(n); sync({journals:n});}}} className="text-red-300 text-xs">🗑️</button>
                           </>
                         )}
@@ -2716,15 +2627,36 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           </div>
                       </div>
 
-                      <p className="text-sm mb-4 leading-relaxed font-black text-gray-800">{j.content}</p>
+                      <p className="text-sm mb-4 leading-relaxed font-black text-gray-800 whitespace-pre-wrap">{j.content}</p>
                       
-                      {j.image && (
-                        <div className="w-full flex justify-center mt-2 overflow-hidden rounded-[24px]">
-                          <img 
-                            src={j.image} 
-                            className="w-full max-h-[500px] object-cover rounded-[24px] shadow-sm border border-gray-100" 
-                            alt="journal visual"
-                          />
+                      {/* 💥 方案 1：長截圖支援等比例完整顯示 + 捲動視窗 */}
+                      {allPhotos.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                          {allPhotos.map((photoSrc, pIdx) => (
+                            <div key={pIdx} className="w-full max-h-[600px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 border border-gray-100">
+                              <div
+                                onClick={() => setLightboxImg(photoSrc)}
+                                className="w-full flex justify-center cursor-pointer hover:opacity-95 transition-opacity relative group"
+                                title="點擊放大圖片"
+                              >
+                                <img 
+                                  src={photoSrc} 
+                                  className="w-full object-contain rounded-[20px] shadow-sm" 
+                                  alt="journal visual"
+                                />
+                                <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-[20px]">
+                                  🔍 點擊放大
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 💥 影片播放器展示 */}
+                      {j.video && (
+                        <div className="w-full rounded-[24px] overflow-hidden bg-black mb-4 flex justify-center max-h-[400px]">
+                          <video src={j.video} controls className="max-w-full max-h-[400px] object-contain" />
                         </div>
                       )}
 
@@ -2757,25 +2689,86 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                               {comments.map(c => {
                                 const cAuthor = getMember(c.authorId);
                                 const canDeleteComment = c.authorId === user.id || isWayne;
+                                const cLikes = c.likes || [];
+                                const hasCLiked = cLikes.includes(user.id);
+                                const isReplying = replyingCommentIds[j.id] === c.id;
+
                                 return (
-                                  <div key={c.id} className="flex items-start gap-2.5 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                                    <img src={cAuthor.avatar} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-black text-black">{cAuthor.name}</span>
-                                        <span className="text-[9px] text-gray-400 font-mono">{c.date}</span>
+                                  <div key={c.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 space-y-2">
+                                    <div className="flex items-start gap-2.5">
+                                      <img src={cAuthor.avatar} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
+                                      <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[11px] font-black text-black">{cAuthor.name}</span>
+                                          <span className="text-[9px] text-gray-400 font-mono">{c.date}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-800 mt-1 leading-relaxed font-normal">{c.content}</p>
+                                        
+                                        {/* 💥 留言按讚與回覆按鈕列 */}
+                                        <div className="flex items-center gap-3 mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleCommentLike(j.id, c.id)}
+                                            className={`text-[10px] font-black flex items-center gap-1 ${hasCLiked ? 'text-rose-500' : 'text-gray-400'}`}
+                                          >
+                                            <span>{hasCLiked ? '❤️' : '🤍'}</span>
+                                            <span>{cLikes.length > 0 ? cLikes.length : '讚'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setReplyingCommentIds({ ...replyingCommentIds, [j.id]: isReplying ? null : c.id })}
+                                            className="text-[10px] text-[#5E9E8E] font-black hover:underline"
+                                          >
+                                            {isReplying ? '取消回覆' : '回覆'}
+                                          </button>
+                                        </div>
                                       </div>
-                                      <p className="text-xs text-gray-800 mt-0.5 leading-relaxed font-normal">{c.content}</p>
+                                      {canDeleteComment && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteComment(j.id, c.id)}
+                                          className="text-[10px] text-gray-400 hover:text-red-500 ml-1 font-black"
+                                          title="刪除留言"
+                                        >
+                                          ✕
+                                        </button>
+                                      )}
                                     </div>
-                                    {canDeleteComment && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteComment(j.id, c.id)}
-                                        className="text-[10px] text-gray-400 hover:text-red-500 ml-1 font-black"
-                                        title="刪除留言"
-                                      >
-                                        ✕
-                                      </button>
+
+                                    {/* 💥 針對特定留言的回覆輸入框 */}
+                                    {isReplying && (
+                                      <div className="flex gap-2 pl-8 pt-2">
+                                        <input
+                                          type="text"
+                                          value={replyInputs[c.id] || ''}
+                                          onChange={(e) => setReplyInputs({ ...replyInputs, [c.id]: e.target.value })}
+                                          placeholder={`回覆 @${cAuthor.name}...`}
+                                          className="flex-1 p-2 bg-white rounded-xl text-xs outline-none border border-gray-200 font-black text-black"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const replyText = (replyInputs[c.id] || '').trim();
+                                            if (!replyText) return;
+                                            const newReply: JournalComment = {
+                                              id: Date.now(),
+                                              authorId: user.id,
+                                              content: `回覆 @${cAuthor.name}：${replyText}`,
+                                              date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                              likes: [],
+                                              replyToCommentId: c.id
+                                            };
+                                            const next = journals.map(item => item.id === j.id ? { ...item, comments: [...(item.comments || []), newReply] } : item);
+                                            setJournals(next);
+                                            sync({ journals: next });
+                                            setReplyInputs({ ...replyInputs, [c.id]: '' });
+                                            setReplyingCommentIds({ ...replyingCommentIds, [j.id]: null });
+                                          }}
+                                          className="px-3 py-1.5 bg-[#5E9E8E] text-white rounded-xl text-[10px] font-black"
+                                        >
+                                          送出
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
                                 );
@@ -2844,11 +2837,10 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     if(!newTodoInput.task.trim()) return alert("請輸入事項名稱！");
                     if(newTodoInput.assigneeIds.length === 0) return alert("請至少選擇一位指派人員！");
 
-                    const newItem: TodoItem = { id: editingTodoId || Date.now(), task: newTodoInput.task.trim(), note: newTodoInput.note.trim(), assigneeIds: newTodoInput.assigneeIds, completedAssigneeIds: [], category: prepSubTab, lastUpdatedById: user.id };
-                    const n = editingTodoId ? todos.map(t => t.id === editingTodoId ? newItem : t) : [newItem, ...todos];
-                    setTodos(n); sync({todos:n}); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]}); setEditingTodoId(null);
-                }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">{editingTodoId ? 'UPDATE' : 'ADD'}</button>
-                {editingTodoId && <button onClick={()=>{setEditingTodoId(null); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]});}} className="w-full mt-2 text-xs text-gray-400 font-black">Cancel Edit</button>}
+                    const newItem: TodoItem = { id: Date.now(), task: newTodoInput.task.trim(), note: newTodoInput.note.trim(), assigneeIds: newTodoInput.assigneeIds, completedAssigneeIds: [], category: prepSubTab, lastUpdatedById: user.id };
+                    const n = [newItem, ...todos];
+                    setTodos(n); sync({todos:n}); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]});
+                }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">ADD ITEM</button>
             </div>
 
             <div className="space-y-4">
@@ -2877,8 +2869,9 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                                 })}
                             </div>
                         </div>
+                        {/* 💥 準備事項改為獨立新視窗編輯 */}
                         <div className="flex items-center gap-3">
-                            <button onClick={()=>{setEditingTodoId(todo.id); setNewTodoInput({task: todo.task, note: todo.note || '', assigneeIds: todo.assigneeIds});}} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
+                            <button onClick={()=>setEditingTodoModal(todo)} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
                             <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 text-lg active:text-red-500">✕</button>
                         </div>
                     </div>
@@ -2962,6 +2955,355 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
           </div>
         )}
       </div>
+
+      {/* 💥 V2.5 獨立新視窗彈窗 1：憑證編輯 Modal */}
+      {editingVoucherModal && (
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
+            <h3 className="text-lg italic mb-4 uppercase">編輯憑證資料</h3>
+            <label className="text-[10px] text-gray-400 ml-1">憑證標題</label>
+            <input 
+              type="text" 
+              value={editingVoucherModal.title} 
+              onChange={e => setEditingVoucherModal({ ...editingVoucherModal, title: e.target.value })} 
+              className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 mb-4 text-xs font-black text-black" 
+            />
+            
+            <label className="text-[10px] text-gray-400 block mb-1 ml-1">更換憑證圖片</label>
+            <ImageUploader 
+              label="上傳新憑證相片" 
+              maxDimension={1200} 
+              onUpload={b64 => setEditingVoucherModal({ ...editingVoucherModal, image: b64 })} 
+            />
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                type="button" 
+                onClick={() => setEditingVoucherModal(null)} 
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const next = bookings.map(b => b.id === editingVoucherModal.id ? editingVoucherModal : b);
+                  setBookings(next); 
+                  sync({ bookings: next });
+                  setEditingVoucherModal(null);
+                  alert("✅ 憑證已更新！");
+                }} 
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md"
+              >
+                ✓ 儲存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* 💥 V2.5 獨立新視窗彈窗 2：記帳編輯 Modal */}
+{editingExpenseModal && (
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg italic mb-4 uppercase">編輯記帳紀錄</h3>
+            <div className="space-y-4">
+              {/* 1. 幣別下拉選單 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">幣別選擇</label>
+                <select
+                  value={editingExpenseModal.currency}
+                  onChange={(e) => {
+                    const cur = e.target.value as 'JPY' | 'TWD' | 'CNY';
+                    setEditingExpenseModal({ ...editingExpenseModal, currency: cur });
+                  }}
+                  className="w-full p-3 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black mt-1"
+                >
+                  <option value="JPY">🇯🇵 日幣 (JPY)</option>
+                  <option value="TWD">🇹🇼 台幣 (TWD)</option>
+                  <option value="CNY">🇨🇳 人民幣 (CNY)</option>
+                </select>
+              </div>
+
+              {/* 2. 消費類別輸入框 + 快速選單膠囊按鈕 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">消費類別</label>
+                <input 
+                  type="text" 
+                  value={editingExpenseModal.category} 
+                  onChange={e => setEditingExpenseModal({ ...editingExpenseModal, category: e.target.value })} 
+                  className="w-full p-3 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black mt-1" 
+                />
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar mt-2 pb-1">
+                  {['早餐','午餐','晚餐','宵夜','交通','娛樂','購物','其他'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setEditingExpenseModal({ ...editingExpenseModal, category: cat })}
+                      className={`px-3 py-1 rounded-full text-[10px] shrink-0 transition-all ${
+                        editingExpenseModal.category === cat 
+                          ? 'bg-[#5E9E8E] text-white shadow-xs' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. 金額輸入 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">金額 ({editingExpenseModal.currency})</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  value={editingExpenseModal.amount} 
+                  onChange={e => setEditingExpenseModal({ ...editingExpenseModal, amount: e.target.value.replace('-', '') })} 
+                  className="w-full p-3 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black mt-1 font-mono text-base" 
+                />
+              </div>
+
+              {/* 4. 付款人員快速選單 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">付款人員 (PAYER)</label>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar mt-1 pb-1">
+                  {allMembers.filter(m => currentMemberIds.includes(m.id)).map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setEditingExpenseModal({ ...editingExpenseModal, payerId: m.id })}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black shrink-0 transition-all ${
+                        editingExpenseModal.payerId === m.id
+                          ? 'bg-blue-500 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
+                      <span>{m.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 5. 備註說明 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">備註說明</label>
+                <input 
+                  type="text" 
+                  value={editingExpenseModal.note || ''} 
+                  onChange={e => setEditingExpenseModal({ ...editingExpenseModal, note: e.target.value })} 
+                  placeholder="備註（選填）..." 
+                  className="w-full p-3 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black mt-1" 
+                />
+              </div>
+
+              {/* 6. 付款方式 */}
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">付款方式</label>
+                <div className="grid grid-cols-4 gap-1.5 mt-1">
+                  {['現金','信用卡','Suica','PayPay'].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setEditingExpenseModal({ ...editingExpenseModal, payMethod: p })}
+                      className={`py-2 rounded-xl text-[10px] font-black transition-all ${
+                        editingExpenseModal.payMethod === p 
+                          ? 'bg-[#5E9E8E] text-white shadow-xs' 
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                type="button" 
+                onClick={() => setEditingExpenseModal(null)} 
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (!editingExpenseModal.category.trim()) return alert("請輸入消費類別！");
+                  if (!editingExpenseModal.amount || Number(editingExpenseModal.amount) <= 0) return alert("金額必須大於 0！");
+                  
+                  const twdVal = (Number(editingExpenseModal.amount) * exchangeRates[editingExpenseModal.currency || 'JPY']).toFixed(0);
+                  const next = records.map(r => r.id === editingExpenseModal.id ? { 
+                    ...editingExpenseModal, 
+                    twdAmount: twdVal,
+                    lastUpdatedById: user.id 
+                  } : r);
+                  setRecords(next); 
+                  sync({ records: next });
+                  setEditingExpenseModal(null);
+                  alert("✅ 記帳紀錄已更新！");
+                }} 
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md hover:bg-[#769650] transition-colors"
+              >
+                ✓ 儲存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💥 V2.5 獨立新視窗彈窗 3：日誌編輯 Modal */}
+      {editingJournalModal && (
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
+            <h3 className="text-lg italic mb-4 uppercase">編輯日誌內容</h3>
+            <textarea 
+              rows={4} 
+              value={editingJournalModal.content} 
+              onChange={e => setEditingJournalModal({ ...editingJournalModal, content: e.target.value })} 
+              className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 mb-4 text-xs font-black text-black leading-relaxed" 
+            />
+
+            {/* 編輯日誌相片列表 */}
+            <div className="mb-4">
+              <label className="text-[10px] text-gray-400 block mb-1">相片管理 (點選 ✕ 移除)</label>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {((editingJournalModal.images && editingJournalModal.images.length > 0) ? editingJournalModal.images : (editingJournalModal.image ? [editingJournalModal.image] : [])).map((img, idx) => (
+                  <div key={idx} className="relative w-14 h-14 rounded-xl overflow-hidden border">
+                    <img src={img} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = (editingJournalModal.images && editingJournalModal.images.length > 0) ? editingJournalModal.images : (editingJournalModal.image ? [editingJournalModal.image] : []);
+                        const filtered = current.filter((_, i) => i !== idx);
+                        setEditingJournalModal({ ...editingJournalModal, images: filtered, image: filtered[0] || '' });
+                      }}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white w-4 h-4 rounded-full text-[9px] flex items-center justify-center"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <ImageUploader
+                label="新增相片"
+                maxDimension={1000}
+                onUpload={(b64) => {
+                  const current = (editingJournalModal.images && editingJournalModal.images.length > 0) ? editingJournalModal.images : (editingJournalModal.image ? [editingJournalModal.image] : []);
+                  if (current.length >= 5) return alert("每則日誌最多 5 張相片！");
+                  const updated = [...current, b64];
+                  setEditingJournalModal({ ...editingJournalModal, images: updated, image: updated[0] });
+                }}
+              />
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                type="button" 
+                onClick={() => setEditingJournalModal(null)} 
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const next = journals.map(j => j.id === editingJournalModal.id ? editingJournalModal : j);
+                  setJournals(next); 
+                  sync({ journals: next });
+                  setEditingJournalModal(null);
+                  alert("✅ 日誌已更新！");
+                }} 
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md"
+              >
+                ✓ 儲存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💥 V2.5 獨立新視窗彈窗 4：準備清單編輯 Modal */}
+      {editingTodoModal && (
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+          <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
+            <h3 className="text-lg italic mb-4 uppercase">編輯準備項目</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">事項名稱</label>
+                <input 
+                  type="text" 
+                  value={editingTodoModal.task} 
+                  onChange={e => setEditingTodoModal({ ...editingTodoModal, task: e.target.value })} 
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">備註說明</label>
+                <input 
+                  type="text" 
+                  value={editingTodoModal.note || ''} 
+                  onChange={e => setEditingTodoModal({ ...editingTodoModal, note: e.target.value })} 
+                  placeholder="備註" 
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 ml-1">指派人員</label>
+                <div className="flex gap-2 flex-wrap mt-1">
+                  {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
+                    const isAssigned = editingTodoModal.assigneeIds.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          const updated = isAssigned
+                            ? editingTodoModal.assigneeIds.filter(id => id !== m.id)
+                            : [...editingTodoModal.assigneeIds, m.id];
+                          setEditingTodoModal({ ...editingTodoModal, assigneeIds: updated });
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1 ${isAssigned ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
+                        {m.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                type="button" 
+                onClick={() => setEditingTodoModal(null)} 
+                className="flex-1 py-3.5 bg-gray-100 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (!editingTodoModal.task.trim()) return alert("請輸入事項名稱！");
+                  const next = todos.map(t => t.id === editingTodoModal.id ? editingTodoModal : t);
+                  setTodos(next); 
+                  sync({ todos: next });
+                  setEditingTodoModal(null);
+                  alert("✅ 準備項目已更新！");
+                }} 
+                className="flex-1 py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md"
+              >
+                ✓ 儲存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 成員編輯 Modal */}
       {editingMemberModal && (
@@ -3050,7 +3392,30 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
         </div>
       )}
 
-      {/* 💥 行程景點編輯彈窗（完整修正：點擊候選不重複彈出 + 透明遮罩點擊關閉 + 智慧去重） */}
+      {/* 💥 全螢幕圖片放大檢視燈箱 */}
+      {lightboxImg && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-[250] flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setLightboxImg(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setLightboxImg(null)}
+              className="absolute top-4 right-4 w-11 h-11 bg-white/20 hover:bg-white/40 text-white rounded-full flex items-center justify-center text-lg font-black z-10 transition-colors shadow-lg"
+            >
+              ✕
+            </button>
+            <img 
+              src={lightboxImg} 
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl" 
+              alt="Enlarged view" 
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 行程景點編輯彈窗 */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black max-h-[90vh] overflow-y-auto">
@@ -3080,7 +3445,6 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                     {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
                   </div>
 
-                  {/* 💥 地標建議下拉清單 */}
                   {placeSuggestions.length > 0 && (
                     <>
                       <div 
@@ -3103,7 +3467,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                           <div
                             key={idx}
                             onClick={() => {
-                              isSelectingPlaceRef.current = true; // 鎖定不觸發重新搜尋
+                              isSelectingPlaceRef.current = true;
                               setPlanForm({
                                 ...planForm,
                                 title: place.title,
@@ -3117,7 +3481,7 @@ function MainApp({ onBack, user, tripData, allMembers, onUpdateMembers, onUpdate
                               <span className="text-lg">{place.icon}</span>
                               <span className="text-sm font-black text-black truncate">{place.title}</span>
                             </div>
-                            <span className="text-[10px] text-gray-400 font-normal shrink-0 ml-2 truncate max-w-[45%]">{place.subtitle}</span>
+                            <span className="text-[10px] text-gray-400 font-normal shrink-0 ml-2 truncate max-w-[45%]" role="contentinfo">{place.subtitle}</span>
                           </div>
                         ))}
                       </div>
@@ -3218,9 +3582,7 @@ export default function AppEntry() {
   const [notice, setNotice] = useState<string>('');
   const [noticeEnabled, setNoticeEnabled] = useState<boolean>(false);
 
-  // 版本日誌列表（每個項目自帶 enabled 開關）
   const [changelogs, setChangelogs] = useState<ChangelogItem[]>(DEFAULT_CHANGELOGS);
-
   const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
@@ -3281,15 +3643,20 @@ export default function AppEntry() {
       localStorage.setItem('app_notice_enabled_v26', JSON.stringify(isEn));
     }
 
-    // 讀取自訂版本日誌資料
     const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
     if (cData?.content && Array.isArray(cData.content)) {
-      const formattedLogs = (cData.content as any[]).map(item => ({
+      const existing = (cData.content as any[]).map(item => ({
         ...item,
         enabled: item.enabled !== undefined ? item.enabled : true
       }));
-      setChangelogs(formattedLogs);
-      localStorage.setItem('app_changelogs_v26', JSON.stringify(formattedLogs));
+      const hasV25 = existing.some(item => item.version === 'v2.5');
+      const mergedLogs = hasV25 ? existing : [...DEFAULT_CHANGELOGS.filter(d => d.version === 'v2.5'), ...existing];
+
+      setChangelogs(mergedLogs);
+      localStorage.setItem('app_changelogs_v26', JSON.stringify(mergedLogs));
+      if (!hasV25) {
+        await supabase.from('trips').upsert({ id: '__app_changelogs__', content: mergedLogs });
+      }
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
@@ -3531,7 +3898,7 @@ export default function AppEntry() {
   if (!selectedTrip) return (
     <TripSelector 
       user={user} 
-      onLogout={handleLogout}
+      onLogout={handleLogout} 
       allTrips={selectedTrips} 
       allMembers={allMembers} 
       onSelect={setSelectedTrip} 
