@@ -137,7 +137,7 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
     id: 'log-v25',
     version: 'v2.5',
     date: '2026-10-12',
-    title: '🚀 V2.5 全面彈窗編輯與多媒體升級',
+    title: '🚀 彈窗編輯與多媒體升級',
     items: [
       '所有模組（憑證、記帳、日誌、準備清單）編輯功能全面改為獨立新視窗彈窗。',
       '相片上傳升級自適應長寬比裁切，智慧邊界鎖定防止拖出黑邊，並支援一鍵原圖上傳。',
@@ -145,7 +145,7 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
       '日誌多張相片改為橫向左右滑動輪播；日誌留言支援在同一個對話卡片內巢狀回覆。',
       '日誌短影片支援編輯預覽、一鍵更換與刪除影片；新增行程起訖日期防呆驗證。'
     ],
-    enabled: true
+    enabled: false
   },
   {
     id: 'log-v24',
@@ -158,7 +158,7 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
       '支援已使用憑證一鍵「取消使用」退回未使用狀態。',
       '憑證圖片預覽改為原始比例無黑邊呈現，並支援點擊全螢幕大圖放大檢視。'
     ],
-    enabled: true
+    enabled: false
   }
 ];
 
@@ -3881,24 +3881,26 @@ export default function AppEntry() {
     }
 
     const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
-    if (cData?.content && Array.isArray(cData.content)) {
-      const existing = (cData.content as any[]).map(item => ({
+    if (cData?.content && Array.isArray(cData.content) && cData.content.length > 0) {
+      // 1. 優先保留雲端已編輯的內容與開關狀態
+      const cloudLogs = (cData.content as any[]).map(item => ({
         ...item,
-        enabled: item.enabled !== undefined ? item.enabled : true
+        enabled: item.enabled !== undefined ? item.enabled : false
       }));
 
-      // 依據 version 進行去重保證 key 唯一
-      const uniqueMap = new Map();
-      [...DEFAULT_CHANGELOGS, ...existing].forEach(item => {
-        if (!uniqueMap.has(item.version)) {
-          uniqueMap.set(item.version, item);
-        }
-      });
-      const mergedLogs = Array.from(uniqueMap.values());
+      // 2. 只有當程式碼有全新版本、而資料庫完全沒有時，才補入新版本（預設 false）
+      const existingVersions = new Set(cloudLogs.map(l => l.version));
+      const newItemsToAdd = DEFAULT_CHANGELOGS.filter(d => !existingVersions.has(d.version));
+
+      const mergedLogs = [...newItemsToAdd, ...cloudLogs];
 
       setChangelogs(mergedLogs);
       localStorage.setItem('app_changelogs_v26', JSON.stringify(mergedLogs));
-      await supabase.from('trips').upsert({ id: '__app_changelogs__', content: mergedLogs });
+    } else {
+      // 若資料庫完全沒有資料，才寫入預設關閉的內容
+      setChangelogs(DEFAULT_CHANGELOGS);
+      localStorage.setItem('app_changelogs_v26', JSON.stringify(DEFAULT_CHANGELOGS));
+      await supabase.from('trips').upsert({ id: '__app_changelogs__', content: DEFAULT_CHANGELOGS });
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
