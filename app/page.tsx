@@ -30,6 +30,13 @@ interface ExpenseRecord {
   date: string;
   note?: string;
   lastUpdatedById?: string;
+  // 代墊相關欄位
+  isAdvance?: boolean;                 // 是否為代墊款
+  advanceTargetType?: 'member' | 'other'; // 代墊對象：旅伴或外人
+  advanceMemberId?: string;            // 代墊對象旅伴 ID
+  advanceOtherNote?: string;           // 代墊對象其他備註
+  isSettled?: boolean;                 // 是否已結清
+  originalPayerId?: string;            // 原始先掏錢的付款人
 }
 
 interface Plan {
@@ -66,8 +73,8 @@ interface JournalEntry {
   content: string; 
   date: string; 
   image?: string;
-  images?: string[]; // 支援多圖 (上限 5 張)
-  video?: string;    // 支援 15 秒短影片
+  images?: string[];
+  video?: string;
   lastUpdatedById?: string;
   likes?: string[];
   comments?: JournalComment[];
@@ -130,37 +137,8 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
 
-const PRESET_TRIP_ICONS = ['☃️', '❄️', '🗻', '✈️', '🌸', '⛩️', '🗼', '🌴', '🍜', '⛺', '🏖️', '🚗', '🎡', '🍱'];
-
-const DEFAULT_CHANGELOGS: ChangelogItem[] = [
-  //{
-  //  id: 'log-v25',
-  //  version: 'v26.10.05',
-  //  date: '2026-10-12',
-  //  title: '🚀 彈窗編輯與多媒體升級',
-  //  items: [
-  //    '所有模組（憑證、記帳、日誌、準備清單）編輯功能全面改為獨立新視窗彈窗。',
-  //    '相片上傳升級自適應長寬比裁切，智慧邊界鎖定防止拖出黑邊，並支援一鍵原圖上傳。',
-  //    '記帳幣別改為下拉式選單並自動記憶，付款方式每次送出後清空並加入強制選擇防呆。',
-  //    '日誌多張相片改為橫向左右滑動輪播；日誌留言支援在同一個對話卡片內巢狀回覆。',
-  //    '日誌短影片支援編輯預覽、一鍵更換與刪除影片；新增行程起訖日期防呆驗證。'
-  //  ],
-  //  enabled: false
- // },
- // {
- //   id: 'log-v24',
- //   version: 'v26.10.04',
- //   date: '2026-10-11',
- //   title: '🎫 憑證管理升級（未使用/已使用狀態切換）',
- //   items: [
- //    '憑證上傳按鈕已置頂至列表最上方，新上傳憑證自動排序於最前端。',
- //     '新增憑證「未使用 / 已使用」雙狀態管理，支援一鍵標記已使用並記錄操作人。',
-  //    '支援已使用憑證一鍵「取消使用」退回未使用狀態。',
-  //    '憑證圖片預覽改為原始比例無黑邊呈現，並支援點擊全螢幕大圖放大檢視。'
-  //  ],
-  //  enabled: false
- // }
-];
+// 清空寫死的預設版本，完全由 Supabase 雲端資料庫掌控
+const DEFAULT_CHANGELOGS: ChangelogItem[] = [];
 
 function generateJoinCode(existingTrips: Trip[]): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -186,13 +164,6 @@ function getTodayDateString(): string {
   const m = String(today.getMonth() + 1).padStart(2, '0');
   const d = String(today.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-function getTodayShortDateString(): string {
-  const today = new Date();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
-  return `${m}/${d}`;
 }
 
 function getNowTimestampString(): string {
@@ -270,7 +241,7 @@ function compressVideoFile(file: File, maxDurationSec = 15): Promise<string> {
   });
 }
 
-// 💥 升級版圖片上傳元件：支援 1:1 頭像模式（Cover 填滿 + 自由拖曳移動 + 智慧鎖定無黑邊）與自適應長圖模式
+// 💥 升級版圖片上傳元件：支援 1:1 大頭貼模式（Cover 填滿 + 邊界鎖定無黑邊）與自適應長圖模式
 function ImageUploader({ 
   onUpload, 
   label, 
@@ -315,7 +286,6 @@ function ImageUploader({
     e.target.value = '';
   };
 
-  // 計算裁切框尺寸（若是 1:1 大頭貼維持 280x280 正方形）
   const boxDimensions = useMemo(() => {
     if (forceSquare) {
       return { width: 280, height: 280 };
@@ -333,7 +303,6 @@ function ImageUploader({
     return { width: Math.max(160, Math.round(w)), height: Math.max(160, Math.round(h)) };
   }, [imgNaturalSize, forceSquare]);
 
-  // 💥 計算渲染到框內的基準尺寸（Cover 填滿保證大頭貼 1:1 絕無任何黑邊）
   const renderedBaseSize = useMemo(() => {
     const boxW = boxDimensions.width;
     const boxH = boxDimensions.height;
@@ -348,7 +317,6 @@ function ImageUploader({
     }
   }, [boxDimensions, imgNaturalSize, forceSquare]);
 
-  // 💥 智慧防黑邊限制：拖曳時保證照片四個邊界絕對不會離開裁切框
   const clampOffset = (newX: number, newY: number, currentZoom: number) => {
     const boxW = boxDimensions.width;
     const boxH = boxDimensions.height;
@@ -381,7 +349,6 @@ function ImageUploader({
     setIsDragging(false);
   };
 
-  // 1. 確認套用裁切（1:1 大頭貼精準裁切繪製）
   const handleConfirmCrop = () => {
     if (!imgRef.current || !containerRef.current) return;
     const img = imgRef.current;
@@ -411,7 +378,6 @@ function ImageUploader({
     setRawImage(null);
   };
 
-  // 2. ⚡ 一鍵跳過裁切直接使用原圖
   const handleDirectUseOriginal = () => {
     if (!rawImage) return;
     const img = new Image();
@@ -510,7 +476,7 @@ function ImageUploader({
 
             <div className="w-full mt-4 px-2">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                <span>原比例 (1.0x)</span>
+                <span>原尺寸 (1.0x)</span>
                 <span className="text-[#5E9E8E] font-black">{zoom.toFixed(1)}x</span>
                 <span>放大 (3.0x)</span>
               </div>
@@ -832,7 +798,6 @@ function TripSelector({
   allTrips, 
   onAddTrip, 
   onDeleteTrip, 
-  onUpdateTrip,
   onUpdateTripWithMigration, 
   allMembers, 
   onUpdateMembers, 
@@ -853,7 +818,6 @@ function TripSelector({
   allTrips: Trip[], 
   onAddTrip: any, 
   onDeleteTrip: any, 
-  onUpdateTrip: (t: Trip) => void,
   onUpdateTripWithMigration: (updatedTrip: Trip, oldTrip: Trip) => Promise<void>, 
   allMembers: Member[], 
   onUpdateMembers: any, 
@@ -937,7 +901,6 @@ function TripSelector({
     };
   }, [editingTripSetting]);
 
-  // 💥 修正 1：編輯行程起訖日期防呆
   const handleSaveTripSettings = async () => {
     if (!editingTripSetting) return;
     const { original, title, startDate, endDate, emoji } = editingTripSetting;
@@ -1219,6 +1182,10 @@ function TripSelector({
                 )}
               </div>
 
+              {visibleChangelogs.length === 0 && (
+                <div className="bg-gray-50 p-6 rounded-3xl text-center text-xs text-gray-400 font-normal">目前尚無已發佈顯示的版本更新紀錄</div>
+              )}
+
               {visibleChangelogs.map((log, idx) => (
                 <div key={`${log.id}-${idx}`} className="bg-gray-50 border border-gray-100 rounded-3xl p-4.5">
                   <div className="flex justify-between items-center mb-1.5">
@@ -1289,7 +1256,7 @@ function TripSelector({
                     <button type="button" onClick={() => setEditingLogItem(null)} className="text-xs text-gray-400">取消</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="版本號 (如 v2.5)" value={editingLogItem.version} onChange={e => setEditingLogItem({ ...editingLogItem, version: e.target.value })} className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
+                    <input type="text" placeholder="版本號 (如 v26.10.06)" value={editingLogItem.version} onChange={e => setEditingLogItem({ ...editingLogItem, version: e.target.value })} className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
                     <input type="date" value={editingLogItem.date} onChange={e => setEditingLogItem({ ...editingLogItem, date: e.target.value })} className="p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
                   </div>
                   <input type="text" placeholder="標題" value={editingLogItem.title} onChange={e => setEditingLogItem({ ...editingLogItem, title: e.target.value })} className="w-full p-2.5 bg-white rounded-xl text-xs font-black border border-gray-200 outline-none" />
@@ -1302,7 +1269,7 @@ function TripSelector({
                   }} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-md">✓ 儲存此版本</button>
                 </div>
               ) : (
-                <button type="button" onClick={() => setEditingLogItem({ id: '', version: '', date: getTodayDateString(), title: '', itemsText: '', enabled: true })} className="w-full py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-2xl text-xs font-black">+ 新增一筆版本日誌</button>
+                <button type="button" onClick={() => setEditingLogItem({ id: '', version: '', date: getTodayDateString(), title: '', itemsText: '', enabled: false })} className="w-full py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-2xl text-xs font-black">+ 新增一筆版本日誌</button>
               )}
 
               <div className="space-y-2.5">
@@ -1329,7 +1296,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 💥 修正 1：行程基本資料設定彈窗（結束日期不可小於開始日期） */}
       {editingTripSetting && (
         <div className="fixed inset-0 bg-black/80 z-[120] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black my-auto">
@@ -1402,7 +1368,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 💥 修正 1：建立新行程彈窗（結束日期不可小於開始日期） */}
       {showAddTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -1544,9 +1509,12 @@ function MainApp({
   const [bookSubTab, setBookSubTab] = useState('機票'); 
   const [voucherSubTab, setVoucherSubTab] = useState<'未使用' | '已使用'>('未使用');
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
+  
+  // 💥 查帳篩選：成員（預設空陣列代表全部成員）與日期（預設空陣列代表全部日期）
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
-  const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
+  const [filterDates, setFilterDates] = useState<string[]>([]);
 
+  const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
   const dynamicTripDates = useMemo(() => getDatesList(tripData.startDate, tripData.endDate), [tripData.startDate, tripData.endDate]);
 
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
@@ -1599,7 +1567,6 @@ function MainApp({
   const [editingMemberModal, setEditingMemberModal] = useState<Member | null>(null);
   const [exchangeRates, setExchangeRates] = useState({ JPY: 0.22, TWD: 1.0, CNY: 4.5 });
   
-  // 記帳幣別自動記憶 (預設 JPY)
   const [currency, setCurrency] = useState<'JPY' | 'TWD' | 'CNY'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dupi_preferred_currency');
@@ -1611,10 +1578,14 @@ function MainApp({
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
-  
-  // 💥 修正 3：記帳付款方式預設為空字串，每次送出後清空
   const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
+
+  // 💥 記帳代墊狀態
+  const [isAdvanceMode, setIsAdvanceMode] = useState(false);
+  const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
+  const [advanceMemberId, setAdvanceMemberId] = useState<string>('');
+  const [advanceOtherNote, setAdvanceOtherNote] = useState('');
 
   // 日誌多圖與短影片輸入狀態
   const [newJournalContent, setNewJournalContent] = useState('');
@@ -1703,190 +1674,6 @@ function MainApp({
     };
   }, [tripData.id]);
 
-  useEffect(() => {
-    const activeCityObj = cityConfigs.find(c => c.dayIndexes.includes(activeDay));
-    if (!activeCityObj) {
-      setWeatherStatus({
-        hasConfig: false,
-        cityName: '',
-        isTooFar: false,
-        daysUntil: 0,
-        advice: '尚未設定此日城市，請點選右上角 🖋️ 新增城市並勾選對應旅遊日。'
-      });
-      return;
-    }
-
-    const targetDate = getDateObj(tripData.startDate, activeDay);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    targetDate.setHours(0, 0, 0, 0);
-
-    const diffDays = Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays > 7) {
-      setWeatherStatus({
-        hasConfig: true,
-        cityName: activeCityObj.name,
-        isTooFar: true,
-        daysUntil: diffDays,
-        advice: `距離出發日還有 ${diffDays} 天，還沒辦法提供天氣預報，建議出發前 5 天查看喔！`
-      });
-      return;
-    }
-
-    let isCancelled = false;
-    const fetchWeather = async () => {
-      try {
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(activeCityObj.name)}&count=1&language=zh&format=json`);
-        const geoData = await geoRes.json();
-        if (!geoData.results || geoData.results.length === 0) {
-          if (!isCancelled) {
-            setWeatherStatus({
-              hasConfig: true,
-              cityName: activeCityObj.name,
-              isTooFar: false,
-              daysUntil: diffDays,
-              temp: 24,
-              pop: 15,
-              precip: 0.2,
-              advice: `已設定 ${activeCityObj.name}，氣候宜人，早晚溫差大請備妥薄外套。`
-            });
-          }
-          return;
-        }
-
-        const { latitude, longitude } = geoData.results[0];
-        const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,precipitation_probability_max,precipitation_sum&timezone=auto`
-        );
-        const wData = await weatherRes.json();
-
-        if (wData.daily && !isCancelled) {
-          const targetIso = targetDate.toISOString().split('T')[0];
-          const dateIdx = wData.daily.time.indexOf(targetIso);
-          const idx = dateIdx !== -1 ? dateIdx : 0;
-
-          const temp = Math.round(wData.daily.temperature_2m_max[idx] ?? 24);
-          const pop = wData.daily.precipitation_probability_max ? Math.round(wData.daily.precipitation_probability_max[idx] ?? 10) : 10;
-          const precip = Number((wData.daily.precipitation_sum ? wData.daily.precipitation_sum[idx] ?? 0 : 0).toFixed(1));
-
-          let customAdvice = "晴時多雲，氣候舒適！";
-          if (temp < 10) customAdvice = "極冷低溫！請穿著防寒大衣、發熱衣與圍巾手套。";
-          else if (temp < 20) customAdvice = "早晚微涼，建議穿長袖上衣並隨身攜帶夾克。";
-          if (pop >= 50) customAdvice += " 降雨機率高，出門請備妥雨具！";
-
-          setWeatherStatus({
-            hasConfig: true,
-            cityName: activeCityObj.name,
-            isTooFar: false,
-            daysUntil: diffDays,
-            temp,
-            pop,
-            precip,
-            advice: customAdvice
-          });
-        }
-      } catch (err) {
-        if (!isCancelled) {
-          setWeatherStatus({
-            hasConfig: true,
-            cityName: activeCityObj.name,
-            isTooFar: false,
-            daysUntil: diffDays,
-            temp: 24,
-            pop: 10,
-            precip: 0.1,
-            advice: `已設定 ${activeCityObj.name}，請依日常氣溫注意穿搭。`
-          });
-        }
-      }
-    };
-
-    fetchWeather();
-    return () => { isCancelled = true; };
-  }, [activeDay, cityConfigs, tripData.startDate]);
-
-  useEffect(() => {
-    if (isSelectingPlaceRef.current) {
-      isSelectingPlaceRef.current = false;
-      return;
-    }
-
-    const query = planForm.title.trim();
-    if (query.length < 2) {
-      setPlaceSuggestions([]);
-      setIsSearchingPlaces(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearchingPlaces(true);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10&countrycodes=tw,jp&accept-language=zh-TW,zh,ja`
-        );
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const seen = new Set<string>();
-          const formatted: Array<{ title: string; subtitle: string; icon: string }> = [];
-
-          for (const item of data) {
-            const shortName = item.name || item.display_name.split(',')[0];
-            const addressParts = [
-              item.address?.suburb || item.address?.city || item.address?.town || '',
-              item.address?.country || ''
-            ].filter(Boolean).join(', ');
-
-            const key = `${shortName}-${addressParts}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              formatted.push({
-                title: shortName,
-                subtitle: addressParts || item.display_name.slice(0, 30),
-                icon: detectPlaceIcon(shortName)
-              });
-            }
-            if (formatted.length >= 5) break;
-          }
-
-          setPlaceSuggestions(formatted);
-        } else {
-          setPlaceSuggestions([]);
-        }
-      } catch (e) {
-        setPlaceSuggestions([]);
-      } finally {
-        setIsSearchingPlaces(false);
-      }
-    }, 350);
-
-    return () => clearTimeout(timer);
-  }, [planForm.title]);
-
-  useEffect(() => {
-    const q = newCityName.trim();
-    if (q.length < 2) {
-      setCitySuggestions([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=zh&format=json`);
-        const data = await res.json();
-        if (data.results && Array.isArray(data.results)) {
-          setCitySuggestions(data.results.map((r: any) => r.name));
-        } else {
-          setCitySuggestions([]);
-        }
-      } catch (e) {
-        setCitySuggestions([]);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [newCityName]);
-
   const sync = async (update: any) => {
     const full = { ...stateRef.current, ...update };
     stateRef.current = full;
@@ -1912,10 +1699,114 @@ function MainApp({
     });
   }, [flights]);
 
+  // 💥 篩選邏輯：同時過濾「選取成員」與「選取日期」
   const filteredRecords = useMemo(() => {
-    if (filterPayerIds.length === 0) return records;
-    return records.filter(r => filterPayerIds.includes(r.payerId));
-  }, [records, filterPayerIds]);
+    return records.filter(r => {
+      const matchPayer = filterPayerIds.length === 0 || filterPayerIds.includes(r.payerId);
+      const rDateShort = r.date.split(' ')[0];
+      const matchDate = filterDates.length === 0 || filterDates.includes(rDateShort);
+      return matchPayer && matchDate;
+    });
+  }, [records, filterPayerIds, filterDates]);
+
+  // 💥 查帳統計核心計算（扣除已結清之代墊外部款項）
+  const expenseStats = useMemo(() => {
+    let totalTwd = 0;
+    const categoryTotals: { [cat: string]: number } = {};
+    const memberTotals: { [memberId: string]: number } = {};
+    const dateGroups: { [groupName: string]: ExpenseRecord[] } = {};
+
+    filteredRecords.forEach(r => {
+      const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
+      const amountNum = Number(r.twdAmount || 0);
+
+      // 若為幫外人代墊且已結清收回，不計入實質總支出
+      if (!isSettledOther) {
+        totalTwd += amountNum;
+        const c = r.category || '其他';
+        categoryTotals[c] = (categoryTotals[c] || 0) + amountNum;
+        memberTotals[r.payerId] = (memberTotals[r.payerId] || 0) + amountNum;
+      }
+
+      const dName = dynamicTripDates.some(d => r.date.startsWith(d))
+        ? r.date.split(' ')[0]
+        : '其他日期 (非旅行日)';
+      if (!dateGroups[dName]) dateGroups[dName] = [];
+      dateGroups[dName].push(r);
+    });
+
+    // 圓餅圖（分類佔比）
+    const palette = ['#5E9E8E', '#E9C46A', '#E76F51', '#2A9D8F', '#F4A261', '#457B9D', '#A8DADC', '#6D6875'];
+    let accumulated = 0;
+    const slices = Object.entries(categoryTotals).map(([cat, val], idx) => {
+      const pct = totalTwd > 0 ? (val / totalTwd) * 100 : 0;
+      const startAngle = accumulated * 3.6;
+      accumulated += pct;
+      const endAngle = accumulated * 3.6;
+      return {
+        cat,
+        val,
+        pct: Number(pct.toFixed(1)),
+        color: palette[idx % palette.length],
+        startAngle,
+        endAngle
+      };
+    });
+
+    // 長條圖（多人花費對比）
+    const maxMemberVal = Math.max(...Object.values(memberTotals), 1);
+    const memberBars = Object.entries(memberTotals).map(([mId, val]) => {
+      const pct = totalTwd > 0 ? (val / totalTwd) * 100 : 0;
+      const barWidthPct = Math.min(100, (val / maxMemberVal) * 100);
+      return {
+        mId,
+        val,
+        pct: Number(pct.toFixed(1)),
+        barWidthPct
+      };
+    });
+
+    return { totalTwd, categoryTotals, dateGroups, slices, memberBars };
+  }, [filteredRecords, dynamicTripDates]);
+
+  // 💥 結清代墊款處理函式
+  const handleSettleAdvance = (recordId: number) => {
+    const target = records.find(r => r.id === recordId);
+    if (!target) return;
+
+    if (target.advanceTargetType === 'member') {
+      const advMember = getMember(target.advanceMemberId);
+      if (!confirm(`確定要將此筆代墊款結清嗎？\n結清後，該筆金額將正式轉為 ${advMember.name} 的花費支出。`)) return;
+
+      const next = records.map(r => {
+        if (r.id !== recordId) return r;
+        return {
+          ...r,
+          isSettled: true,
+          originalPayerId: r.payerId,
+          payerId: r.advanceMemberId || r.payerId, // 轉移給該旅伴
+          lastUpdatedById: user.id
+        };
+      });
+      setRecords(next);
+      sync({ records: next });
+      alert(`✅ 代墊款已結清，支出已轉移計入 ${advMember.name}！`);
+    } else {
+      if (!confirm(`確定已收到外部代墊款嗎？\n結清後紀錄將完整保留，但此筆金額將從行程總花費預算中扣除。`)) return;
+
+      const next = records.map(r => {
+        if (r.id !== recordId) return r;
+        return {
+          ...r,
+          isSettled: true,
+          lastUpdatedById: user.id
+        };
+      });
+      setRecords(next);
+      sync({ records: next });
+      alert("✅ 已標記外部代墊結清，款項已從實質總支出中扣除！");
+    }
+  };
 
   const handleToggleLike = (journalId: number) => {
     const nextJournals = journals.map(j => {
@@ -1949,7 +1840,6 @@ function MainApp({
     sync({ journals: next });
   };
 
-  // 💥 修正 4：新增留言或回覆
   const handleAddComment = (journalId: number, replyToCommentId?: number) => {
     const text = replyToCommentId 
       ? (replyInputs[replyToCommentId] || '').trim()
@@ -1996,46 +1886,8 @@ function MainApp({
     sync({ journals: nextJournals });
   };
 
-  // 查帳統計與圓餅圖資料
-  const expenseStats = useMemo(() => {
-    const totalTwd = filteredRecords.reduce((sum, r) => sum + Number(r.twdAmount || 0), 0);
-    const categoryTotals: { [cat: string]: number } = {};
-    const dateGroups: { [groupName: string]: ExpenseRecord[] } = {};
-
-    filteredRecords.forEach(r => {
-      const c = r.category || '其他';
-      categoryTotals[c] = (categoryTotals[c] || 0) + Number(r.twdAmount || 0);
-
-      const dName = dynamicTripDates.some(d => r.date.startsWith(d))
-        ? r.date.split(' ')[0]
-        : '其他日期 (非旅行日)';
-      if (!dateGroups[dName]) dateGroups[dName] = [];
-      dateGroups[dName].push(r);
-    });
-
-    const palette = ['#5E9E8E', '#E9C46A', '#E76F51', '#2A9D8F', '#F4A261', '#457B9D', '#A8DADC', '#6D6875'];
-    let accumulated = 0;
-    const slices = Object.entries(categoryTotals).map(([cat, val], idx) => {
-      const pct = totalTwd > 0 ? (val / totalTwd) * 100 : 0;
-      const startAngle = accumulated * 3.6;
-      accumulated += pct;
-      const endAngle = accumulated * 3.6;
-      return {
-        cat,
-        val,
-        pct: Number(pct.toFixed(1)),
-        color: palette[idx % palette.length],
-        startAngle,
-        endAngle
-      };
-    });
-
-    return { totalTwd, categoryTotals, dateGroups, slices };
-  }, [filteredRecords, dynamicTripDates]);
-
   return (
     <div className="min-h-screen bg-[#F9F8F3] font-sans pb-32 text-black font-black">
-      {/* 頂部導航 */}
       <div className="p-4 flex justify-between items-center sticky top-0 bg-[#F9F8F3]/90 backdrop-blur-md z-40">
         <div onClick={onBack} className="flex items-center gap-3 cursor-pointer">
           <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">←</div>
@@ -2054,14 +1906,12 @@ function MainApp({
       </div>
 
       <div className="px-4 mt-4">
-        {/* --- [Tab: 行程] --- */}
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
                   className="absolute top-5 right-5 bg-white/20 hover:bg-white/30 p-2.5 rounded-2xl active:scale-95 transition-all text-sm z-10"
-                  title="編輯城市排程"
                 >
                   {showCityEditor ? '✓' : '🖋️'}
                 </button>
@@ -2249,7 +2099,6 @@ function MainApp({
           </div>
         )}
 
-        {/* --- [Tab: 預訂] --- */}
         {activeTab === '預訂' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -2287,7 +2136,6 @@ function MainApp({
               </div>
             ) : (
               <div className="space-y-6">
-                {/* 💥 修正 2：憑證上傳改用自適應長寬比裁切 + 原圖使用 */}
                 <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center shadow-sm">
                   <ImageUploader label="UPLOAD VOUCHER (新增憑證相片)" maxDimension={1200} onUpload={(b64)=>{
                     const title=prompt("請輸入憑證名稱 (例如: 迪士尼門票):"); 
@@ -2467,7 +2315,6 @@ function MainApp({
                       className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black text-lg border border-gray-200 mb-4 placeholder:text-gray-400" 
                     />
                     
-                    {/* 💥 修正 3：付款方式選單（強制手動點選） */}
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-[10px] text-gray-500 ml-2 font-black">PAY METHOD (付款方式 - 必填)</p>
                       {!payMethod && <span className="text-[9px] text-rose-500 font-bold">請點選一種付款方式</span>}
@@ -2485,8 +2332,8 @@ function MainApp({
                       ))}
                     </div>
 
-                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (付款人)</p>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
+                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
                       {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
                         <button key={m.id} onClick={()=>setExpensePayerId(m.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}>
                           <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" /> {m.name}
@@ -2494,11 +2341,90 @@ function MainApp({
                       ))}
                     </div>
 
+                    {/* 💥 記帳功能代墊按鈕區塊 */}
+                    <div className="mb-6 p-4 rounded-2xl border transition-all bg-gray-50/70 border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🤝</span>
+                          <div>
+                            <p className="text-xs font-black">幫人代墊款項</p>
+                            <p className="text-[9px] text-gray-400 font-normal">若為替旅伴或外人代買請開啟此項</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !isAdvanceMode;
+                            setIsAdvanceMode(next);
+                            if (next && !advanceMemberId) {
+                              const otherMembers = allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
+                              if (otherMembers.length > 0) setAdvanceMemberId(otherMembers[0].id);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isAdvanceMode ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-200 text-gray-600'}`}
+                        >
+                          {isAdvanceMode ? '已開啟代墊' : '一般記帳'}
+                        </button>
+                      </div>
+
+                      {isAdvanceMode && (
+                        <div className="mt-3 pt-3 border-t border-gray-200/80 space-y-3 animate-in fade-in">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAdvanceTargetType('member')}
+                              className={`flex-1 py-1.5 rounded-xl text-xs font-black ${advanceTargetType === 'member' ? 'bg-[#5E9E8E] text-white shadow-xs' : 'bg-white text-gray-500 border border-gray-200'}`}
+                            >
+                              幫旅伴代墊
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAdvanceTargetType('other')}
+                              className={`flex-1 py-1.5 rounded-xl text-xs font-black ${advanceTargetType === 'other' ? 'bg-[#5E9E8E] text-white shadow-xs' : 'bg-white text-gray-500 border border-gray-200'}`}
+                            >
+                              幫其他人 (外人)
+                            </button>
+                          </div>
+
+                          {advanceTargetType === 'member' ? (
+                            <div>
+                              <p className="text-[10px] text-gray-500 mb-1 ml-1 font-black">選擇代墊對象 (旅伴)：</p>
+                              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                                {allMembers.filter(m => currentMemberIds.includes(m.id)).map(m => (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => setAdvanceMemberId(m.id)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black shrink-0 transition-all ${advanceMemberId === m.id ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'}`}
+                                  >
+                                    <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                    <span>{m.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-[10px] text-gray-500 mb-1 ml-1 font-black">外人代墊說明 (誰託買/事由)：</p>
+                              <input
+                                type="text"
+                                value={advanceOtherNote}
+                                onChange={e => setAdvanceOtherNote(e.target.value)}
+                                placeholder="例如: 同事託買合利他命、朋友公仔"
+                                className="w-full p-2.5 px-3 bg-white rounded-xl text-xs font-black text-black border border-gray-200 outline-none"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <button onClick={()=>{
                         if(!category.trim()) return alert("請輸入消費內容！");
                         if(!amount || Number(amount) <= 0) return alert("金額必須大於 0，不能為負數或空白！");
                         if(!payMethod) return alert("❌ 請選擇付款方式！");
                         if(!expensePayerId) return alert("請選擇付款人！");
+                        if(isAdvanceMode && advanceTargetType === 'member' && !advanceMemberId) return alert("請選擇代墊對象旅伴！");
 
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
                         const autoTimestamp = getNowTimestampString();
@@ -2513,116 +2439,226 @@ function MainApp({
                           payerId: expensePayerId, 
                           date: autoTimestamp,
                           note: expenseNote.trim(),
-                          lastUpdatedById: user.id
+                          lastUpdatedById: user.id,
+                          isAdvance: isAdvanceMode,
+                          advanceTargetType: isAdvanceMode ? advanceTargetType : undefined,
+                          advanceMemberId: isAdvanceMode && advanceTargetType === 'member' ? advanceMemberId : undefined,
+                          advanceOtherNote: isAdvanceMode && advanceTargetType === 'other' ? advanceOtherNote.trim() : undefined,
+                          isSettled: false,
+                          originalPayerId: expensePayerId
                         };
                         const n = [rec, ...records]; 
                         setRecords(n); 
                         sync({records:n}); 
                         
                         alert("✅ 記帳成功！");
-                        // 💥 修正 3：每次儲存後清空付款方式與欄位
                         setAmount(''); 
                         setCategory(''); 
                         setExpenseNote('');
                         setPayMethod('');
+                        setIsAdvanceMode(false);
+                        setAdvanceOtherNote('');
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
 
                 <div className="space-y-3 font-black">
-                    {records.map(r=>(
-                        <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-12 relative group">
+                    {records.map(r=>{
+                      const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
+
+                      return (
+                        <div key={r.id} className={`bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-12 relative group ${isSettledOther ? 'opacity-60 bg-gray-50' : ''}`}>
                             <div className="flex items-center gap-3">
                                 <img src={getMember(r.payerId).avatar} className="w-6 h-6 rounded-full shadow-sm object-cover" />
                                 <div className="text-xs font-black">
-                                  {r.category} <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 ml-1">{r.date}</span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`${isSettledOther ? 'line-through text-gray-500' : ''}`}>{r.category}</span>
+                                    <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono">{r.date}</span>
+                                    
+                                    {r.isAdvance && (
+                                      r.isSettled ? (
+                                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                                          ✓ 已結清 {r.advanceTargetType === 'member' ? `(轉為 ${getMember(r.advanceMemberId).name} 支出)` : `(外部已收訖)`}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[8px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                                          ⏳ 待結清 {r.advanceTargetType === 'member' ? `(代墊給 ${getMember(r.advanceMemberId).name})` : `(代墊其他: ${r.advanceOtherNote || '外人'})`}
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
+
                                   {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
-                                  <p className="text-[8px] text-gray-400 font-mono italic">{r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})</p>
+                                  <p className="text-[8px] text-gray-400 font-mono italic mt-0.5">
+                                    {r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})
+                                  </p>
+
+                                  {/* 結清按鈕 */}
+                                  {r.isAdvance && !r.isSettled && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSettleAdvance(r.id)}
+                                      className="mt-2 text-[9px] bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-2.5 py-1 rounded-xl flex items-center gap-1 active:scale-95 transition-all"
+                                    >
+                                      ✓ 點擊標記為已結清
+                                    </button>
+                                  )}
                                 </div>
                             </div>
                             <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">
-                              {r.amount} {r.currency || 'JPY'}
+                              <span className={`${isSettledOther ? 'line-through text-gray-400' : ''}`}>{r.amount} {r.currency || 'JPY'}</span>
                               <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
+                              {isSettledOther && <p className="text-[8px] text-gray-400 font-normal">(已收回不計預算)</p>}
                             </div>
                             <div className="absolute right-4 flex flex-col gap-2">
                               <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
                               <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
                             </div>
                         </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </>
             ) : (
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                  <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-3">選擇成員查帳 (可複選)</h4>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <button 
-                      onClick={() => setFilterPayerIds([])}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterPayerIds.length === 0 ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
-                    >
-                      全部成員
-                    </button>
-                    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
-                      const isSel = filterPayerIds.includes(m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          onClick={() => {
-                            const next = isSel ? filterPayerIds.filter(id => id !== m.id) : [...filterPayerIds, m.id];
-                            setFilterPayerIds(next);
-                          }}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isSel ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
-                        >
-                          <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
-                          {m.name}
-                        </button>
-                      );
-                    })}
+                  {/* 成員篩選列 */}
+                  <div className="mb-4">
+                    <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">👥 選擇成員查帳 (複選可看多人對比)</h4>
+                    <div className="flex flex-wrap gap-2">
+                      <button 
+                        onClick={() => setFilterPayerIds([])}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterPayerIds.length === 0 ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        全部成員
+                      </button>
+                      {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m => {
+                        const isSel = filterPayerIds.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              const next = isSel ? filterPayerIds.filter(id => id !== m.id) : [...filterPayerIds, m.id];
+                              setFilterPayerIds(next);
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${isSel ? 'bg-[#5E9E8E] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
+                          >
+                            <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
+                  {/* 💥 日期篩選列（單選/複選） */}
+                  <div className="mb-6 pt-3 border-t border-gray-100">
+                    <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">📅 行程日期篩選 (可單選或多選)</h4>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setFilterDates([])}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterDates.length === 0 ? 'bg-[#E9C46A] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        全部日期
+                      </button>
+                      {dynamicTripDates.map(dStr => {
+                        const isDateSel = filterDates.includes(dStr);
+                        return (
+                          <button
+                            key={dStr}
+                            onClick={() => {
+                              const next = isDateSel ? filterDates.filter(d => d !== dStr) : [...filterDates, dStr];
+                              setFilterDates(next);
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black font-mono transition-all ${isDateSel ? 'bg-[#E9C46A] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
+                          >
+                            {dStr}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 統計總額卡片 */}
                   <div className="bg-[#5E9E8E]/10 p-5 rounded-2xl border border-[#5E9E8E]/20 mb-6 text-center">
                     <p className="text-xs opacity-70 uppercase font-black">篩選統計總額 (折合台幣)</p>
                     <h3 className="text-3xl font-mono mt-1 text-[#5E9E8E]">NT$ {expenseStats.totalTwd.toLocaleString()}</h3>
-                    <p className="text-[10px] text-gray-500 mt-1 font-black">共 {filteredRecords.length} 筆支出紀錄</p>
+                    <p className="text-[10px] text-gray-500 mt-1 font-black">
+                      共 {filteredRecords.length} 筆明細 (已扣除已結清外部代墊款)
+                    </p>
                   </div>
 
+                  {/* 💥 圖表切換：選 2 人或以上顯示長條圖，否則顯示圓餅圖 */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                    <p className="text-xs text-gray-600 font-black mb-3">🍰 各分類支出佔比 (圓餅圖)</p>
-                    {expenseStats.totalTwd > 0 ? (
-                      <div className="flex flex-col sm:flex-row items-center justify-around gap-4">
-                        <svg className="w-36 h-36 -rotate-90" viewBox="0 0 36 36">
-                          {expenseStats.slices.map((slice, i) => {
-                            const strokeDasharray = `${slice.pct} ${100 - slice.pct}`;
-                            const strokeDashoffset = 100 - (slice.startAngle / 3.6);
+                    {filterPayerIds.length >= 2 ? (
+                      <div>
+                        <p className="text-xs text-gray-600 font-black mb-3">📊 多人花費對比長條圖</p>
+                        <div className="space-y-3">
+                          {filterPayerIds.map(mId => {
+                            const barData = expenseStats.memberBars.find(b => b.mId === mId) || { val: 0, pct: 0, barWidthPct: 0 };
+                            const member = getMember(mId);
+
                             return (
-                              <circle
-                                key={i}
-                                cx="18"
-                                cy="18"
-                                r="15.915"
-                                fill="transparent"
-                                stroke={slice.color}
-                                strokeWidth="4"
-                                strokeDasharray={strokeDasharray}
-                                strokeDashoffset={strokeDashoffset}
-                              />
+                              <div key={mId} className="space-y-1">
+                                <div className="flex justify-between items-center text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <img src={member.avatar} className="w-4 h-4 rounded-full object-cover" />
+                                    <span>{member.name}</span>
+                                  </div>
+                                  <span className="font-mono text-gray-700">
+                                    NT$ {barData.val.toLocaleString()} ({barData.pct}%)
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-3 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-[#5E9E8E] h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${barData.barWidthPct}%` }}
+                                  />
+                                </div>
+                              </div>
                             );
                           })}
-                        </svg>
-                        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
-                          {expenseStats.slices.map((s, idx) => (
-                            <div key={idx} className="flex items-center justify-between gap-3 text-[11px]">
-                              <div className="flex items-center gap-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }}></span>
-                                <span>{s.cat}</span>
-                              </div>
-                              <span className="font-mono text-gray-600 font-bold">NT$ {s.val.toLocaleString()} ({s.pct}%)</span>
-                            </div>
-                          ))}
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 text-center py-4">尚無支出數據可供統計</p>
+                      <div>
+                        <p className="text-xs text-gray-600 font-black mb-3">🍰 各分類支出佔比 (圓餅圖)</p>
+                        {expenseStats.totalTwd > 0 ? (
+                          <div className="flex flex-col sm:flex-row items-center justify-around gap-4">
+                            <svg className="w-36 h-36 -rotate-90" viewBox="0 0 36 36">
+                              {expenseStats.slices.map((slice, i) => {
+                                const strokeDasharray = `${slice.pct} ${100 - slice.pct}`;
+                                const strokeDashoffset = 100 - (slice.startAngle / 3.6);
+                                return (
+                                  <circle
+                                    key={i}
+                                    cx="18"
+                                    cy="18"
+                                    r="15.915"
+                                    fill="transparent"
+                                    stroke={slice.color}
+                                    strokeWidth="4"
+                                    strokeDasharray={strokeDasharray}
+                                    strokeDashoffset={strokeDashoffset}
+                                  />
+                                );
+                              })}
+                            </svg>
+                            <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+                              {expenseStats.slices.map((s, idx) => (
+                                <div key={idx} className="flex items-center justify-between gap-3 text-[11px]">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }}></span>
+                                    <span>{s.cat}</span>
+                                  </div>
+                                  <span className="font-mono text-gray-600 font-bold">NT$ {s.val.toLocaleString()} ({s.pct}%)</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 text-center py-4">所選條件下無支出數據</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2630,10 +2666,14 @@ function MainApp({
                 <div className="space-y-4">
                   <h4 className="text-xs text-gray-500 uppercase tracking-wider ml-1">📅 依行程日期分類檢視</h4>
                   {Object.keys(expenseStats.dateGroups).length === 0 && (
-                    <div className="bg-white p-6 rounded-2xl text-center text-xs text-gray-400">目前沒有可供分類的消費明細</div>
+                    <div className="bg-white p-6 rounded-2xl text-center text-xs text-gray-400">目前沒有符合條件的明細</div>
                   )}
                   {Object.entries(expenseStats.dateGroups).map(([dateName, groupList]) => {
-                    const groupTotalTwd = groupList.reduce((sum, item) => sum + Number(item.twdAmount || 0), 0);
+                    const groupTotalTwd = groupList.reduce((sum, item) => {
+                      const isSettledOther = item.isAdvance && item.advanceTargetType === 'other' && item.isSettled;
+                      return isSettledOther ? sum : sum + Number(item.twdAmount || 0);
+                    }, 0);
+
                     return (
                       <div key={dateName} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
                         <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
@@ -2643,19 +2683,28 @@ function MainApp({
                           <span className="text-xs font-mono text-gray-500 font-black">小計: NT$ {groupTotalTwd.toLocaleString()}</span>
                         </div>
                         <div className="space-y-2">
-                          {groupList.map(r => (
-                            <div key={r.id} className="flex justify-between items-center text-xs py-1.5 border-b border-dashed border-gray-100 last:border-b-0">
-                              <div>
-                                <span className="font-black text-black">{r.category}</span>
-                                <span className="text-[10px] text-gray-400 ml-2">({getMember(r.payerId).name} · {r.payMethod})</span>
-                                {r.note && <span className="text-[10px] text-gray-500 block">💬 {r.note}</span>}
+                          {groupList.map(r => {
+                            const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
+
+                            return (
+                              <div key={r.id} className={`flex justify-between items-center text-xs py-1.5 border-b border-dashed border-gray-100 last:border-b-0 ${isSettledOther ? 'opacity-50 line-through' : ''}`}>
+                                <div>
+                                  <span className="font-black text-black">{r.category}</span>
+                                  <span className="text-[10px] text-gray-400 ml-2">({getMember(r.payerId).name} · {r.payMethod})</span>
+                                  {r.isAdvance && (
+                                    <span className="text-[9px] text-amber-600 block">
+                                      {r.isSettled ? '✓ 已結清代墊' : '⏳ 待結清代墊'}
+                                    </span>
+                                  )}
+                                  {r.note && <span className="text-[10px] text-gray-500 block">💬 {r.note}</span>}
+                                </div>
+                                <div className="text-right font-mono text-[#5E9E8E]">
+                                  <span>{r.amount} {r.currency}</span>
+                                  <span className="text-[9px] text-gray-400 block font-normal">≈ NT$ {r.twdAmount}</span>
+                                </div>
                               </div>
-                              <div className="text-right font-mono text-[#5E9E8E]">
-                                <span>{r.amount} {r.currency}</span>
-                                <span className="text-[9px] text-gray-400 block font-normal">≈ NT$ {r.twdAmount}</span>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -2710,7 +2759,6 @@ function MainApp({
 
                 <div className="flex justify-between items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* 💥 修正 2：日誌照片上傳支援自適應裁切 + 一鍵原圖 */}
                       <ImageUploader 
                         label={`相片上傳 (${newJournalImages.length}/5)`} 
                         maxDimension={1200} 
@@ -2770,8 +2818,6 @@ function MainApp({
                 const isCommentsOpen = !!expandedComments[j.id];
 
                 const allPhotos = j.images && j.images.length > 0 ? j.images : (j.image ? [j.image] : []);
-
-                // 💥 修正 4：整理主留言與巢狀子回覆
                 const rootComments = comments.filter(c => !c.replyToCommentId);
                 const getReplies = (parentId: number) => comments.filter(c => c.replyToCommentId === parentId);
 
@@ -2796,7 +2842,6 @@ function MainApp({
 
                       <p className="text-sm mb-4 leading-relaxed font-black text-gray-800 whitespace-pre-wrap">{j.content}</p>
                       
-                      {/* 💥 修正 5：日誌多張相片改為橫向滑動輪播（左右 Scroll） */}
                       {allPhotos.length > 0 && (
                         <div className="relative mb-4">
                           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 pt-1">
@@ -2828,7 +2873,6 @@ function MainApp({
                         </div>
                       )}
 
-                      {/* 影片播放器展示 */}
                       {j.video && (
                         <div className="w-full rounded-[24px] overflow-hidden bg-black mb-4 flex justify-center max-h-[400px]">
                           <video src={j.video} controls className="max-w-full max-h-[400px] object-contain" />
@@ -2855,7 +2899,6 @@ function MainApp({
                         </button>
                       </div>
 
-                      {/* 💥 修正 4：日誌留言與回覆在同一個對話方塊內展示 */}
                       {isCommentsOpen && (
                         <div className="mt-4 pt-3 border-t border-dashed border-gray-200 space-y-3 animate-in fade-in">
                           {rootComments.length === 0 ? (
@@ -2872,7 +2915,6 @@ function MainApp({
 
                                 return (
                                   <div key={c.id} className="bg-gray-50 p-4 rounded-3xl border border-gray-100 space-y-3">
-                                    {/* 主留言主體 */}
                                     <div className="flex items-start gap-2.5">
                                       <img src={cAuthor.avatar} className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
                                       <div className="flex-1">
@@ -2912,7 +2954,6 @@ function MainApp({
                                       )}
                                     </div>
 
-                                    {/* 巢狀子回覆列表（同一卡片內縮排展示） */}
                                     {replies.length > 0 && (
                                       <div className="pl-6 border-l-2 border-[#5E9E8E]/30 space-y-2 mt-2">
                                         {replies.map(rep => {
@@ -2956,7 +2997,6 @@ function MainApp({
                                       </div>
                                     )}
 
-                                    {/* 針對該留言的回覆輸入框 */}
                                     {isReplying && (
                                       <div className="flex gap-2 pl-6 pt-2">
                                         <input
@@ -2981,7 +3021,6 @@ function MainApp({
                             </div>
                           )}
 
-                          {/* 最外層主留言輸入框 */}
                           <div className="flex gap-2 items-center pt-2">
                             <input
                               type="text"
@@ -3013,7 +3052,6 @@ function MainApp({
           </div>
         )}
 
-        {/* --- [Tab: 準備] --- */}
         {activeTab === '準備' && (
           <div className="animate-in fade-in pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -3085,7 +3123,6 @@ function MainApp({
           </div>
         )}
 
-        {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
             <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl p-5 text-white shadow-lg flex justify-between items-center">
@@ -3161,7 +3198,6 @@ function MainApp({
         )}
       </div>
 
-      {/* 💥 獨立彈窗 1：憑證編輯 Modal */}
       {editingVoucherModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
@@ -3207,7 +3243,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 獨立彈窗 2：記帳編輯 Modal */}
       {editingExpenseModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
@@ -3353,7 +3388,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 獨立彈窗 3：日誌編輯 Modal（支援相片管理與短影片預覽/替換/刪除） */}
       {editingJournalModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
@@ -3365,7 +3399,6 @@ function MainApp({
               className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 mb-4 text-xs font-black text-black leading-relaxed" 
             />
 
-            {/* 編輯日誌相片列表 */}
             <div className="mb-4">
               <label className="text-[10px] text-gray-400 block mb-1">相片管理 (點選 ✕ 移除)</label>
               <div className="flex gap-2 flex-wrap mb-2">
@@ -3398,7 +3431,6 @@ function MainApp({
               />
             </div>
 
-            {/* 💥 修正 6：日誌影片編輯與刪除區塊 */}
             <div className="mb-4 p-3 bg-gray-50 rounded-2xl border border-gray-200">
               <label className="text-[10px] text-gray-500 block mb-2 font-black">短影片管理 (15秒)</label>
               {editingJournalModal.video ? (
@@ -3463,7 +3495,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 💥 獨立彈窗 4：準備清單編輯 Modal */}
       {editingTodoModal && (
         <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
@@ -3543,7 +3574,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 成員編輯 Modal */}
       {editingMemberModal && (
         <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
@@ -3652,7 +3682,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 行程景點編輯彈窗 */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black max-h-[90vh] overflow-y-auto">
@@ -3746,7 +3775,6 @@ function MainApp({
         </div>
       )}
 
-      {/* 底部 TabBar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t flex justify-around p-4 shadow-2xl z-50">
         {[{id:'行程',icon:'📅'},{id:'預訂',icon:'📔'},{id:'記帳',icon:'👛'},{id:'日誌',icon:'🖋️'},{id:'準備',icon:'💼'},{id:'成員',icon:'👥'}].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 transition-all duration-300 font-black ${activeTab===tab.id?'text-[#86A760] scale-125 font-black -translate-y-1':'opacity-30'}`}>
@@ -3756,7 +3784,6 @@ function MainApp({
         ))}
       </div>
 
-      {/* 機票編輯彈窗 */}
       {showFlightModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-black">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl overflow-y-auto max-h-[90vh] text-black">
@@ -3819,7 +3846,7 @@ export default function AppEntry() {
   const [notice, setNotice] = useState<string>('');
   const [noticeEnabled, setNoticeEnabled] = useState<boolean>(false);
 
-  const [changelogs, setChangelogs] = useState<ChangelogItem[]>(DEFAULT_CHANGELOGS);
+  const [changelogs, setChangelogs] = useState<ChangelogItem[]>([]);
   const [loginIcon, setLoginIcon] = useState<string>('❄️');
 
   const fetchCloudData = async () => {
@@ -3880,6 +3907,7 @@ export default function AppEntry() {
       localStorage.setItem('app_notice_enabled_v26', JSON.stringify(isEn));
     }
 
+    // 💥 純讀取資料庫，不進行寫死字串的覆蓋合併
     const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
     if (cData?.content && Array.isArray(cData.content)) {
       const formattedLogs = (cData.content as any[]).map(item => ({
@@ -4135,7 +4163,6 @@ export default function AppEntry() {
       onSelect={setSelectedTrip} 
       onAddTrip={handleAddTrip} 
       onDeleteTrip={handleDeleteTrip} 
-      onUpdateTrip={handleUpdateTrip}
       onUpdateTripWithMigration={handleUpdateTripWithMigration}
       onUpdateMembers={handleUpdateMembers} 
       onUpdateUser={setUser}
