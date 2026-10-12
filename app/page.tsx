@@ -135,7 +135,7 @@ const PRESET_TRIP_ICONS = ['☃️', '❄️', '🗻', '✈️', '🌸', '⛩️
 const DEFAULT_CHANGELOGS: ChangelogItem[] = [
   {
     id: 'log-v25',
-    version: 'v2.5',
+    version: 'v26.10.05',
     date: '2026-10-12',
     title: '🚀 彈窗編輯與多媒體升級',
     items: [
@@ -149,7 +149,7 @@ const DEFAULT_CHANGELOGS: ChangelogItem[] = [
   },
   {
     id: 'log-v24',
-    version: 'v2.4',
+    version: 'v26.10.04',
     date: '2026-10-11',
     title: '🎫 憑證管理升級（未使用/已使用狀態切換）',
     items: [
@@ -3881,26 +3881,13 @@ export default function AppEntry() {
     }
 
     const { data: cData } = await supabase.from('trips').select('content').eq('id', '__app_changelogs__').single();
-    if (cData?.content && Array.isArray(cData.content) && cData.content.length > 0) {
-      // 1. 優先保留雲端已編輯的內容與開關狀態
-      const cloudLogs = (cData.content as any[]).map(item => ({
+    if (cData?.content && Array.isArray(cData.content)) {
+      const formattedLogs = (cData.content as any[]).map(item => ({
         ...item,
         enabled: item.enabled !== undefined ? item.enabled : false
       }));
-
-      // 2. 只有當程式碼有全新版本、而資料庫完全沒有時，才補入新版本（預設 false）
-      const existingVersions = new Set(cloudLogs.map(l => l.version));
-      const newItemsToAdd = DEFAULT_CHANGELOGS.filter(d => !existingVersions.has(d.version));
-
-      const mergedLogs = [...newItemsToAdd, ...cloudLogs];
-
-      setChangelogs(mergedLogs);
-      localStorage.setItem('app_changelogs_v26', JSON.stringify(mergedLogs));
-    } else {
-      // 若資料庫完全沒有資料，才寫入預設關閉的內容
-      setChangelogs(DEFAULT_CHANGELOGS);
-      localStorage.setItem('app_changelogs_v26', JSON.stringify(DEFAULT_CHANGELOGS));
-      await supabase.from('trips').upsert({ id: '__app_changelogs__', content: DEFAULT_CHANGELOGS });
+      setChangelogs(formattedLogs);
+      localStorage.setItem('app_changelogs_v26', JSON.stringify(formattedLogs));
     }
 
     const { data: iData } = await supabase.from('trips').select('content').eq('id', '__app_login_icon__').single();
