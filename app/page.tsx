@@ -3265,7 +3265,7 @@ function MainApp({
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs text-gray-500 font-black block mb-1">
-                      人（代墊對象）
+                      代墊對象
                     </label>
                     <input
                       type="text"
