@@ -1429,35 +1429,66 @@ function TripSelector({
         </div>
       )}
 
-      {showUserAdmin && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center">
-          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95">
+{/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
+{showUserAdmin && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
+          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
               <h3 className="text-lg font-black text-black">USER ADMIN</h3>
-              <button type="button" onClick={() => setShowUserAdmin(false)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black">✕</button>
+              <button type="button" onClick={() => setShowUserAdmin(false)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black hover:bg-gray-200">✕</button>
             </div>
             <div className="space-y-3 overflow-y-auto flex-1 pr-1">
-              {allMembers.map(m => (
-                <div key={m.id} className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-2xl shadow-xs">
-                  <img src={m.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
-                  <div className="flex-1 overflow-hidden font-black">
-                    <p className="text-xs font-black text-black truncate">{m.name}</p>
-                    <p className="text-[9px] text-gray-400 font-mono">帳號: {m.account || m.loginCode}</p>
+              {allMembers.map(m => {
+                const isSuperAdmin = (m.account || m.loginCode) === 'wayne';
+
+                return (
+                  <div key={m.id} className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-2xl shadow-xs">
+                    <img src={m.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    <div className="flex-1 overflow-hidden font-black">
+                      <p className="text-xs font-black text-black truncate">{m.name}</p>
+                      <p className="text-[9px] text-gray-400 font-mono">帳號: {m.account || m.loginCode}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button 
+                        type="button" 
+                        onClick={() => setEditingMember(m)} 
+                        className="text-xs text-blue-500 hover:text-blue-700 font-black px-2 py-1 rounded-lg hover:bg-blue-50"
+                      >
+                        Edit
+                      </button>
+                      
+                      {/* 💥 補回刪除人員功能 (Wayne 管理員防呆不可刪除) */}
+                      {!isSuperAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`確定要完全刪除成員「${m.name}」？\n此動作將從全站名冊中移除該帳號！`)) {
+                              const next = allMembers.filter(item => item.id !== m.id);
+                              onUpdateMembers(next);
+                            }
+                          }}
+                          className="text-xs text-red-500 hover:text-red-700 font-black px-2 py-1 rounded-lg hover:bg-red-50"
+                          title="刪除成員"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <button type="button" onClick={() => setEditingMember(m)} className="text-xs text-blue-500 font-black">Edit</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
+      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
       {editingMember && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-4 flex items-center justify-center font-black">
-          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
+          <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
               <h3 className="text-lg italic uppercase text-black">設定個人資料</h3>
-              <button type="button" onClick={() => setEditingMember(null)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black">✕</button>
+              <button type="button" onClick={() => setEditingMember(null)} className="w-9 h-9 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-sm font-black hover:bg-gray-200">✕</button>
             </div>
             <div className="overflow-y-auto flex-1 pr-1 space-y-3.5">
               <div className="flex flex-col items-center gap-2 mb-2">
