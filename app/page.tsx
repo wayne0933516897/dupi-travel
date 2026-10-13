@@ -30,11 +30,12 @@ interface ExpenseRecord {
   date: string;
   note?: string;
   lastUpdatedById?: string;
+  // 代墊相關欄位
   isAdvance?: boolean;
   advanceTargetType?: 'member' | 'other';
   advanceMemberId?: string;
-  advanceOtherPerson?: string;
-  advanceOtherNote?: string;
+  advanceOtherPerson?: string; // 幫其他人：對象名稱
+  advanceOtherNote?: string;   // 幫其他人：備註說明
   isSettled?: boolean;
   originalPayerId?: string;
 }
@@ -72,7 +73,7 @@ interface JournalEntry {
   authorId: string; 
   content: string; 
   date: string; 
-  image?: string;
+  image?: string; 
   images?: string[];
   video?: string;
   lastUpdatedById?: string;
@@ -136,8 +137,6 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Fox&backgroundColor=ffdfbf',
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
-
-const DEFAULT_CHANGELOGS: ChangelogItem[] = [];
 
 function generateJoinCode(existingTrips: Trip[]): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -324,6 +323,7 @@ function ImageUploader({
     const boxH = boxDimensions.height;
     const curW = renderedBaseSize.width * currentZoom;
     const curH = renderedBaseSize.height * currentZoom;
+
     const maxOffsetX = Math.max(0, (curW - boxW) / 2);
     const maxOffsetY = Math.max(0, (curH - boxH) / 2);
 
@@ -1401,6 +1401,7 @@ function TripSelector({
         </div>
       )}
 
+      {/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1452,6 +1453,7 @@ function TripSelector({
         </div>
       )}
 
+      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1513,7 +1515,7 @@ function MainApp({
   const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
   const [filterDates, setFilterDates] = useState<string[]>([]);
 
-  const [currentMemberIds, setCurrentMemberIds] = useState<string[]>(tripData.memberIds || [user.id]);
+  const currentMemberIds = tripData.memberIds || [user.id];
   const dynamicTripDates = useMemo(() => getDatesList(tripData.startDate, tripData.endDate), [tripData.startDate, tripData.endDate]);
 
   const [records, setRecords] = useState<ExpenseRecord[]>([]);
@@ -1579,6 +1581,7 @@ function MainApp({
   const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
+  // 💥 記帳代墊獨立大彈窗 Modal 相關狀態
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [isAdvanceConfigured, setIsAdvanceConfigured] = useState(false);
   const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
@@ -1591,6 +1594,7 @@ function MainApp({
   const [tempAdvOtherPerson, setTempAdvOtherPerson] = useState('');
   const [tempAdvOtherNote, setTempAdvOtherNote] = useState('');
 
+  // 💥 排除自己：旅伴代墊名單中絕不出現當前的付款人
   const otherTripMembers = useMemo(() => {
     return allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
   }, [allMembers, currentMemberIds, expensePayerId]);
@@ -1749,6 +1753,70 @@ function MainApp({
     fetchWeatherForDay(activeDay, cityConfigs);
   }, [activeDay, cityConfigs, tripData.startDate]);
 
+  // 🔍 1. 城市輸入即時自動搜尋推薦 (Debounce 300ms)
+  useEffect(() => {
+    if (!newCityName.trim()) {
+      setCitySuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(newCityName.trim())}&count=5&language=zh&format=json`
+        );
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          const names = data.results.map((r: any) => r.name);
+          setCitySuggestions(Array.from(new Set(names)));
+        } else {
+          setCitySuggestions([]);
+        }
+      } catch (e) {
+        setCitySuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newCityName]);
+
+  // 📍 2. 行程景點地標即時自動搜尋推薦 (Debounce 350ms)
+  useEffect(() => {
+    if (isSelectingPlaceRef.current) {
+      isSelectingPlaceRef.current = false;
+      return;
+    }
+    const q = planForm.title.trim();
+    if (!q || q.length < 2) {
+      setPlaceSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const res = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=zh&format=json`
+        );
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          const mapped = data.results.map((item: any) => ({
+            title: item.name,
+            subtitle: `${item.admin1 || ''} ${item.country || ''}`.trim(),
+            icon: detectPlaceIcon(item.name)
+          }));
+          setPlaceSuggestions(mapped);
+        } else {
+          setPlaceSuggestions([]);
+        }
+      } catch (err) {
+        setPlaceSuggestions([]);
+      } finally {
+        setIsSearchingPlaces(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [planForm.title]);
+
   const updateLocalState = (c: any) => {
     if (!c) return;
     setRecords(c.records || []);
@@ -1806,7 +1874,6 @@ function MainApp({
   };
 
   const handleUpdateTripMembers = (newMemberIds: string[]) => {
-    setCurrentMemberIds(newMemberIds);
     const updatedTrip = { ...tripData, memberIds: newMemberIds };
     onUpdateTrip(updatedTrip);
   };
@@ -1819,11 +1886,16 @@ function MainApp({
     });
   }, [flights]);
 
+  // 💥 純月日比對邏輯，徹底解決帶星期比對為 0 元的 Bug
+  const pureTripDates = useMemo(() => {
+    return dynamicTripDates.map(dStr => dStr.split(' ')[0]);
+  }, [dynamicTripDates]);
+
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       const matchPayer = filterPayerIds.length === 0 || filterPayerIds.includes(r.payerId);
-      const rDateShort = r.date.split(' ')[0];
-      const matchDate = filterDates.length === 0 || filterDates.includes(rDateShort);
+      const rPureDate = r.date.split(' ')[0]; // 取出如 "10/13"
+      const matchDate = filterDates.length === 0 || filterDates.includes(rPureDate);
       return matchPayer && matchDate;
     });
   }, [records, filterPayerIds, filterDates]);
@@ -1845,9 +1917,10 @@ function MainApp({
         memberTotals[r.payerId] = (memberTotals[r.payerId] || 0) + amountNum;
       }
 
-      const dName = dynamicTripDates.some(d => r.date.startsWith(d))
-        ? r.date.split(' ')[0]
-        : '其他日期 (非旅行日)';
+      const rPureDate = r.date.split(' ')[0];
+      const matchTripDateFull = dynamicTripDates.find(d => d.startsWith(rPureDate));
+      const dName = matchTripDateFull || '其他日期 (非旅行日)';
+
       if (!dateGroups[dName]) dateGroups[dName] = [];
       dateGroups[dName].push(r);
     });
@@ -1884,6 +1957,7 @@ function MainApp({
     return { totalTwd, categoryTotals, dateGroups, slices, memberBars };
   }, [filteredRecords, dynamicTripDates]);
 
+  // 💥 結清代墊款處理函式
   const handleSettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -1919,6 +1993,44 @@ function MainApp({
       setRecords(next);
       sync({ records: next });
       alert("✅ 已標記代墊結清，款項已從實質總支出中扣除！");
+    }
+  };
+
+  // 💥 退回結清款項 (恢復為未結清狀態)
+  const handleUnsettleAdvance = (recordId: number) => {
+    const target = records.find(r => r.id === recordId);
+    if (!target) return;
+
+    if (target.advanceTargetType === 'member') {
+      const originalPayer = getMember(target.originalPayerId || target.payerId);
+      if (!confirm(`確定要取消結清，將此筆款項退回為未結清嗎？\n款項將重新轉回 ${originalPayer.name} 帳上。`)) return;
+
+      const next = records.map(r => {
+        if (r.id !== recordId) return r;
+        return {
+          ...r,
+          isSettled: false,
+          payerId: r.originalPayerId || r.payerId,
+          lastUpdatedById: user.id
+        };
+      });
+      setRecords(next);
+      sync({ records: next });
+      alert("✅ 已退回為未結清狀態！");
+    } else {
+      if (!confirm(`確定要取消結清嗎？\n退回後，此筆款項將重新計入行程總支出。`)) return;
+
+      const next = records.map(r => {
+        if (r.id !== recordId) return r;
+        return {
+          ...r,
+          isSettled: false,
+          lastUpdatedById: user.id
+        };
+      });
+      setRecords(next);
+      sync({ records: next });
+      alert("✅ 已退回為未結清狀態！");
     }
   };
 
@@ -2022,11 +2134,12 @@ function MainApp({
       <div className="px-4 mt-4">
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
-            {/* 🌦️ 頂部天氣卡片：支援 Google 官方天氣一鍵開啟 */}
+            {/* 🌦️ 頂部天氣卡片：使用 location.href 移除手機空白分頁 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
                   className="absolute top-5 right-5 bg-white/20 hover:bg-white/30 p-2.5 rounded-2xl active:scale-95 transition-all text-sm z-10"
+                  title="設定城市"
                 >
                   {showCityEditor ? '✓' : '🖋️'}
                 </button>
@@ -2047,7 +2160,7 @@ function MainApp({
                     <p className="text-[11px] opacity-85 mt-1 italic">💡 距離出發日較遠，建議出發前 5 天查看即時預報！</p>
                     <button
                       type="button"
-                      onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`, '_blank')}
+                      onClick={() => { window.location.href = `https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`; }}
                       className="mt-3 text-[10px] bg-white/25 hover:bg-white/35 px-3 py-1.5 rounded-xl font-black text-white flex items-center gap-1 active:scale-95 transition-all"
                     >
                       🔍 查看 Google {weatherStatus.cityName} 即時天氣
@@ -2059,7 +2172,7 @@ function MainApp({
                       <h2 className="text-5xl font-mono tracking-tighter">{weatherStatus.temp}°C</h2>
                       <button
                         type="button"
-                        onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`, '_blank')}
+                        onClick={() => { window.location.href = `https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`; }}
                         className="text-xs bg-white/20 hover:bg-white/35 px-3 py-1 rounded-full uppercase tracking-widest active:scale-95 transition-all"
                         title="點擊查看 Google 官方詳細天氣"
                       >
@@ -2100,6 +2213,7 @@ function MainApp({
                       + 新增
                     </button>
 
+                    {/* 🏙️ 城市自動搜尋下拉推薦選單 */}
                     {citySuggestions.length > 0 && (
                       <div className="absolute top-11 left-0 right-14 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                         {citySuggestions.map((cityName, idx) => (
@@ -2484,6 +2598,7 @@ function MainApp({
                       ))}
                     </div>
 
+                    {/* 代墊設定按鈕 */}
                     <div className="mb-6">
                       <button
                         type="button"
@@ -2561,60 +2676,89 @@ function MainApp({
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
 
+                {/* 記帳下面明細只顯示代墊項目 */}
                 <div className="space-y-3 font-black">
-                    {records.map(r=>{
-                      const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
+                    <div className="flex justify-between items-center px-1 mb-1">
+                      <span className="text-xs text-[#5E9E8E] uppercase tracking-wider">🤝 代墊款項明細專區</span>
+                      <span className="text-[10px] text-gray-400">日常消費請至上方「查帳統計」</span>
+                    </div>
 
-                      return (
-                        <div key={r.id} className={`bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-12 relative group ${isSettledOther ? 'opacity-60 bg-gray-50' : ''}`}>
-                            <div className="flex items-center gap-3">
-                                <img src={getMember(r.payerId).avatar} className="w-6 h-6 rounded-full shadow-sm object-cover" />
-                                <div className="text-xs font-black">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className={`${isSettledOther ? 'line-through text-gray-500' : ''}`}>{r.category}</span>
-                                    <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono">{r.date}</span>
-                                    
-                                    {r.isAdvance && (
-                                      r.isSettled ? (
-                                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                    {records.filter(r => r.isAdvance).length === 0 ? (
+                      <div className="bg-white p-6 rounded-2xl text-center text-xs text-gray-400 border border-gray-100 shadow-sm">
+                        目前尚無代墊紀錄，一般日常消費請切換至上方「📊 查帳統計」查看！
+                      </div>
+                    ) : (
+                      records.filter(r => r.isAdvance).map(r => {
+                        const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
+                        // 🔒 權限限制：只有先掏錢的付款人本人，或管理員 Wayne 可以結清／退回
+                        const canOperateAdvance = (user.id === (r.originalPayerId || r.payerId)) || isWayne;
+
+                        return (
+                          <div key={r.id} className={`bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-12 relative group ${isSettledOther ? 'opacity-60 bg-gray-50' : ''}`}>
+                              <div className="flex items-center gap-3">
+                                  <img src={getMember(r.payerId).avatar} className="w-6 h-6 rounded-full shadow-sm object-cover" />
+                                  <div className="text-xs font-black">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`${isSettledOther ? 'line-through text-gray-500' : ''}`}>{r.category}</span>
+                                      <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono">{r.date}</span>
+                                      
+                                      {r.isSettled ? (
+                                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-black">
                                           ✓ 已結清 {r.advanceTargetType === 'member' ? `(轉為 ${getMember(r.advanceMemberId).name} 支出)` : `(已收訖)`}
                                         </span>
                                       ) : (
-                                        <span className="text-[8px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                                        <span className="text-[8px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-black">
                                           ⏳ 待結清 {r.advanceTargetType === 'member' ? `(代墊給 ${getMember(r.advanceMemberId).name})` : `(代墊給 ${r.advanceOtherPerson || '其他人'}${r.advanceOtherNote ? ` - ${r.advanceOtherNote}` : ''})`}
                                         </span>
-                                      )
-                                    )}
+                                      )}
+                                    </div>
+
+                                    {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
+                                    <p className="text-[8px] text-gray-400 font-mono italic mt-0.5">
+                                      {r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})
+                                    </p>
+
+                                    {/* 結清與退回按鈕加大，且限制本人操作 */}
+                                    <div className="mt-2.5">
+                                      {canOperateAdvance ? (
+                                        !r.isSettled ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSettleAdvance(r.id)}
+                                            className="text-xs bg-amber-500 hover:bg-amber-600 text-white font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                          >
+                                            ✓ 點擊標記為已結清
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUnsettleAdvance(r.id)}
+                                            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-black px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all"
+                                          >
+                                            ↺ 取消結清 (退回未結清)
+                                          </button>
+                                        )
+                                      ) : (
+                                        <span className="text-[10px] text-gray-400 italic">
+                                          {r.isSettled ? '✓ 款項已由付款人結清' : `⏳ 需由代墊人 ${getMember(r.originalPayerId || r.payerId).name} 確認結清`}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-
-                                  {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
-                                  <p className="text-[8px] text-gray-400 font-mono italic mt-0.5">
-                                    {r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})
-                                  </p>
-
-                                  {r.isAdvance && !r.isSettled && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSettleAdvance(r.id)}
-                                      className="mt-2 text-[9px] bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-2.5 py-1 rounded-xl flex items-center gap-1 active:scale-95 transition-all"
-                                    >
-                                      ✓ 點擊標記為已結清
-                                    </button>
-                                  )}
-                                </div>
-                            </div>
-                            <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">
-                              <span className={`${isSettledOther ? 'line-through text-gray-400' : ''}`}>{r.amount} {r.currency || 'JPY'}</span>
-                              <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
-                              {isSettledOther && <p className="text-[8px] text-gray-400 font-normal">(已收回不計預算)</p>}
-                            </div>
-                            <div className="absolute right-4 flex flex-col gap-2">
-                              <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
-                              <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
-                            </div>
-                        </div>
-                      );
-                    })}
+                              </div>
+                              <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">
+                                <span className={`${isSettledOther ? 'line-through text-gray-400' : ''}`}>{r.amount} {r.currency || 'JPY'}</span>
+                                <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
+                                {isSettledOther && <p className="text-[8px] text-gray-400 font-normal">(已收回不計預算)</p>}
+                              </div>
+                              <div className="absolute right-4 flex flex-col gap-2">
+                                <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
+                                <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
+                              </div>
+                          </div>
+                        );
+                      })
+                    )}
                 </div>
               </>
             ) : (
@@ -2648,22 +2792,24 @@ function MainApp({
                     </div>
                   </div>
 
+                  {/* 日期篩選使用 pureDate (如 10/13)，與記帳日期完全吻合 */}
                   <div className="mb-6 pt-3 border-t border-gray-100">
                     <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">📅 行程日期篩選 (可單選或多選)</h4>
                     <div className="flex flex-wrap gap-2">
-                      <button
+                      <button 
                         onClick={() => setFilterDates([])}
                         className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterDates.length === 0 ? 'bg-[#E9C46A] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
                       >
                         全部日期
                       </button>
                       {dynamicTripDates.map(dStr => {
-                        const isDateSel = filterDates.includes(dStr);
+                        const pureD = dStr.split(' ')[0]; // 取出 "10/13"
+                        const isDateSel = filterDates.includes(pureD);
                         return (
                           <button
                             key={dStr}
                             onClick={() => {
-                              const next = isDateSel ? filterDates.filter(d => d !== dStr) : [...filterDates, dStr];
+                              const next = isDateSel ? filterDates.filter(d => d !== pureD) : [...filterDates, pureD];
                               setFilterDates(next);
                             }}
                             className={`px-3 py-1.5 rounded-xl text-xs font-black font-mono transition-all ${isDateSel ? 'bg-[#E9C46A] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}
@@ -3412,6 +3558,7 @@ function MainApp({
               )}
             </div>
 
+            {/* 💥 底部操作：取消 (紅字) / 保存 */}
             <div className="flex gap-3 mt-6 pt-3 border-t border-gray-100 shrink-0">
               <button
                 type="button"
@@ -3941,6 +4088,7 @@ function MainApp({
                     {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
                   </div>
 
+                  {/* 📍 行程景點地標自動搜尋推薦選單 */}
                   {placeSuggestions.length > 0 && (
                     <>
                       <div 
