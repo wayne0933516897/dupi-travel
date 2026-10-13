@@ -30,12 +30,11 @@ interface ExpenseRecord {
   date: string;
   note?: string;
   lastUpdatedById?: string;
-  // 代墊相關欄位
   isAdvance?: boolean;
   advanceTargetType?: 'member' | 'other';
   advanceMemberId?: string;
-  advanceOtherPerson?: string; // 幫其他人：對象名稱
-  advanceOtherNote?: string;   // 幫其他人：備註說明
+  advanceOtherPerson?: string;
+  advanceOtherNote?: string;
   isSettled?: boolean;
   originalPayerId?: string;
 }
@@ -138,7 +137,6 @@ const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Rabbit&backgroundColor=c1f0c8'
 ];
 
-// 清空寫死的預設版本，完全由 Supabase 雲端資料庫掌控
 const DEFAULT_CHANGELOGS: ChangelogItem[] = [];
 
 function generateJoinCode(existingTrips: Trip[]): string {
@@ -178,7 +176,6 @@ function getNowTimestampString(): string {
 
 function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean = true): string[] {
   if (!startStr || !endStr) return [];
-  // 將 YYYY-MM-DD 轉為 YYYY/MM/DD 避免不同瀏覽器時區解析為 UTC 導致日期或星期偏移
   const start = new Date(startStr.replace(/-/g, '/'));
   const end = new Date(endStr.replace(/-/g, '/'));
   const daysOfWeek = ['日', '一', '二', '三', '四', '五', '六'];
@@ -195,7 +192,6 @@ function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean =
     const m = String(cur.getMonth() + 1).padStart(2, '0');
     const d = String(cur.getDate()).padStart(2, '0');
     const dayName = daysOfWeek[cur.getDay()];
-    // 儲存格式如 "12/24 (四)"
     dates.push(withDayOfWeek ? `${m}/${d} (${dayName})` : `${m}/${d}`);
     cur.setDate(cur.getDate() + 1);
   }
@@ -203,7 +199,7 @@ function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean =
 }
 
 function getDateObj(startStr: string, dayIndex: number): Date {
-  const start = new Date(startStr);
+  const start = new Date(startStr.replace(/-/g, '/'));
   const target = new Date(start);
   target.setDate(start.getDate() + (dayIndex - 1));
   return target;
@@ -295,9 +291,7 @@ function ImageUploader({
   };
 
   const boxDimensions = useMemo(() => {
-    if (forceSquare) {
-      return { width: 280, height: 280 };
-    }
+    if (forceSquare) return { width: 280, height: 280 };
     const maxBoxW = 280;
     const maxBoxH = 380;
     const aspect = imgNaturalSize.width / (imgNaturalSize.height || 1);
@@ -328,10 +322,8 @@ function ImageUploader({
   const clampOffset = (newX: number, newY: number, currentZoom: number) => {
     const boxW = boxDimensions.width;
     const boxH = boxDimensions.height;
-    
     const curW = renderedBaseSize.width * currentZoom;
     const curH = renderedBaseSize.height * currentZoom;
-
     const maxOffsetX = Math.max(0, (curW - boxW) / 2);
     const maxOffsetY = Math.max(0, (curH - boxH) / 2);
 
@@ -361,7 +353,6 @@ function ImageUploader({
     if (!imgRef.current || !containerRef.current) return;
     const img = imgRef.current;
     const container = containerRef.current;
-
     const targetWidth = forceSquare ? 400 : boxDimensions.width * 2;
     const targetHeight = forceSquare ? 400 : boxDimensions.height * 2;
 
@@ -529,7 +520,6 @@ function ImageUploader({
 // 1. 登錄與註冊頁面
 function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  
   const [loginAccountInput, setLoginAccountInput] = useState('');
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
@@ -568,23 +558,19 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     if (!/^[a-zA-Z0-9_-]+$/.test(trimmedAccount)) {
       return alert("❌ 登入帳號必須是英文或數字（可含底線），不可包含中文或空格！");
     }
-
     if (!trimmedName) return alert("❌ 請填寫用戶名稱！");
     if (!trimmedPassword) return alert("❌ 請填寫登入密碼！");
     if (trimmedPassword !== regConfirmPassword.trim()) {
       return alert("❌ 兩次密碼輸入不一致，請再次確認！");
     }
-
     if (captchaInput.trim() !== captchaCode) {
       alert("❌ 驗證碼錯誤，請重新輸入！");
       refreshCaptcha();
       return;
     }
-
     if (allMembers.some(m => (m.account || m.loginCode).toLowerCase() === trimmedAccount)) {
       return alert("❌ 該英文帳號已被使用，請更換其他帳號！");
     }
-
     if (allMembers.some(m => m.name.toLowerCase() === trimmedName.toLowerCase())) {
       return alert("❌ 該用戶名稱已被使用，請更換其他名稱！");
     }
@@ -637,11 +623,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
   return (
     <div className="min-h-screen bg-[#F9F8F3] flex flex-col items-center justify-center p-6 text-center font-sans text-black">
       <div className="w-24 h-24 bg-[#5E9E8E] rounded-[32px] mb-6 flex items-center justify-center text-4xl shadow-xl animate-bounce overflow-hidden border-2 border-white/50">
-        {isImage ? (
-          <img src={loginIcon} alt="App Icon" className="w-full h-full object-cover" />
-        ) : (
-          <span>{loginIcon || '❄️'}</span>
-        )}
+        {isImage ? <img src={loginIcon} alt="App Icon" className="w-full h-full object-cover" /> : <span>{loginIcon || '❄️'}</span>}
       </div>
 
       <h1 className="text-3xl font-black text-black mb-1 italic uppercase tracking-tighter">肚皮旅遊</h1>
@@ -877,7 +859,6 @@ function TripSelector({
   } | null>(null);
 
   const [wayneViewAll, setWayneViewAll] = useState(false);
-
   const todayStr = useMemo(() => getTodayDateString(), []);
   const [newTrip, setNewTrip] = useState<Trip>({ 
     id: '', 
@@ -892,9 +873,7 @@ function TripSelector({
   const isWayne = (user.account || user.loginCode) === 'wayne';
 
   const visibleTrips = useMemo(() => {
-    if (isWayne && wayneViewAll) {
-      return allTrips;
-    }
+    if (isWayne && wayneViewAll) return allTrips;
     return allTrips.filter(t => t.memberIds.includes(user.id));
   }, [allTrips, user, isWayne, wayneViewAll]);
 
@@ -918,7 +897,6 @@ function TripSelector({
     if (new Date(startDate) > new Date(endDate)) return alert("❌ 開始日期不可晚於結束日期！");
 
     const { oldDays, newDays, diff } = editingTripDaysInfo;
-
     if (diff < 0) {
       const confirmReduce = confirm(
         `⚠️ 天數縮短提醒：\n原行程為 ${oldDays} 天，修改後為 ${newDays} 天。\n系統將自動保留前 ${newDays} 天排程，超出範圍的排程景點將被清除，記帳項目將自動轉為 (旅行外) 保存。\n\n確定要縮短天數並儲存嗎？`
@@ -940,10 +918,7 @@ function TripSelector({
   };
 
   const displayNoticeText = notice || '歡迎使用肚皮旅遊！祝各位旅遊愉快✈️ 點擊查看公告與版本更新～';
-
-  const visibleChangelogs = useMemo(() => {
-    return changelogs.filter(l => l.enabled);
-  }, [changelogs]);
+  const visibleChangelogs = useMemo(() => changelogs.filter(l => l.enabled), [changelogs]);
 
   return (
     <div className="min-h-screen bg-[#F9F8F3] p-8 font-sans pb-32 text-black font-black">
@@ -1003,7 +978,6 @@ function TripSelector({
           className="bg-[#E9C46A]/20 border border-[#E9C46A]/40 rounded-2xl p-3.5 mb-6 flex items-center gap-2.5 font-black shadow-sm cursor-pointer hover:bg-[#E9C46A]/30 active:scale-98 transition-all overflow-hidden relative animate-in fade-in"
         >
           <span className="text-base shrink-0 z-10 bg-[#FAF6E8] p-1 rounded-lg">📢</span>
-          
           <div className="overflow-hidden whitespace-nowrap flex-1 relative flex">
             <style dangerouslySetInnerHTML={{__html: `
               @keyframes dupiMarquee {
@@ -1011,18 +985,12 @@ function TripSelector({
                 100% { transform: translateX(-50%); }
               }
             `}} />
-            <div 
-              style={{ animation: 'dupiMarquee 20s linear infinite' }}
-              className="inline-flex whitespace-nowrap items-center will-change-transform"
-            >
+            <div style={{ animation: 'dupiMarquee 20s linear infinite' }} className="inline-flex whitespace-nowrap items-center will-change-transform">
               <span className="text-xs text-amber-900 mr-12">{displayNoticeText}</span>
               <span className="text-xs text-amber-900 mr-12">{displayNoticeText}</span>
             </div>
           </div>
-
-          <span className="text-[10px] text-amber-800 bg-white/60 px-2 py-0.5 rounded-lg shrink-0 z-10 font-black shadow-xs">
-            詳情 📜
-          </span>
+          <span className="text-[10px] text-amber-800 bg-white/60 px-2 py-0.5 rounded-lg shrink-0 z-10 font-black shadow-xs">詳情 📜</span>
         </div>
       )}
 
@@ -1103,11 +1071,7 @@ function TripSelector({
                   title={canEditThisTrip ? "點擊開啟行程設定" : undefined}
                   className={`w-16 h-16 bg-[#F2F1EB] rounded-[24px] flex items-center justify-center text-3xl shrink-0 overflow-hidden relative shadow-inner ${canEditThisTrip ? 'hover:ring-2 hover:ring-[#5E9E8E] cursor-pointer' : ''}`}
                 >
-                  {isIconImage ? (
-                    <img src={trip.emoji} alt="Trip Icon" className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{trip.emoji || '☃️'}</span>
-                  )}
+                  {isIconImage ? <img src={trip.emoji} alt="Trip Icon" className="w-full h-full object-cover" /> : <span>{trip.emoji || '☃️'}</span>}
                   {canEditThisTrip && (
                     <div className="absolute inset-0 bg-black/25 opacity-0 hover:opacity-100 flex items-center justify-center text-xs text-white transition-opacity">
                       🖋️
@@ -1437,8 +1401,7 @@ function TripSelector({
         </div>
       )}
 
-{/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
-{showUserAdmin && (
+      {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
@@ -1465,7 +1428,6 @@ function TripSelector({
                         Edit
                       </button>
                       
-                      {/* 💥 補回刪除人員功能 (Wayne 管理員防呆不可刪除) */}
                       {!isSuperAdmin && (
                         <button
                           type="button"
@@ -1490,7 +1452,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1570,7 +1531,6 @@ function MainApp({
 
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
-  // 獨立新視窗編輯狀態 (Modal)
   const [editingVoucherModal, setEditingVoucherModal] = useState<BookingDoc | null>(null);
   const [editingExpenseModal, setEditingExpenseModal] = useState<ExpenseRecord | null>(null);
   const [editingJournalModal, setEditingJournalModal] = useState<JournalEntry | null>(null);
@@ -1619,7 +1579,6 @@ function MainApp({
   const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
-  // 💥 記帳代墊獨立大彈窗 Modal 相關狀態
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [isAdvanceConfigured, setIsAdvanceConfigured] = useState(false);
   const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
@@ -1627,18 +1586,15 @@ function MainApp({
   const [advanceOtherPerson, setAdvanceOtherPerson] = useState('');
   const [advanceOtherNote, setAdvanceOtherNote] = useState('');
 
-  // 彈窗內部暫存狀態（供「取消/保存」切換使用）
   const [tempAdvType, setTempAdvType] = useState<'member' | 'other'>('member');
   const [tempAdvMemberId, setTempAdvMemberId] = useState<string>('');
   const [tempAdvOtherPerson, setTempAdvOtherPerson] = useState('');
   const [tempAdvOtherNote, setTempAdvOtherNote] = useState('');
 
-  // 💥 排除自己：旅伴代墊名單中絕不出現當前的付款人
   const otherTripMembers = useMemo(() => {
     return allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
   }, [allMembers, currentMemberIds, expensePayerId]);
 
-  // 開啟代墊大彈窗時帶入目前狀態
   const handleOpenAdvanceModal = () => {
     setTempAdvType(advanceTargetType);
     setTempAdvMemberId(advanceMemberId || (otherTripMembers[0]?.id || ''));
@@ -1647,7 +1603,6 @@ function MainApp({
     setShowAdvanceModal(true);
   };
 
-  // 儲存代墊大彈窗設定
   const handleSaveAdvanceModal = () => {
     if (tempAdvType === 'member') {
       if (!tempAdvMemberId) {
@@ -1666,7 +1621,6 @@ function MainApp({
     setShowAdvanceModal(false);
   };
 
-  // 日誌多圖與短影片輸入狀態
   const [newJournalContent, setNewJournalContent] = useState('');
   const [newJournalImages, setNewJournalImages] = useState<string[]>([]);
   const [newJournalVideo, setNewJournalVideo] = useState('');
@@ -1709,99 +1663,92 @@ function MainApp({
     fetchRates();
   }, []);
 
-  // 🌦️ 接在 fetchRates 下方：當切換天數 (activeDay)、行程起訖日期或城市設定改變時，自動向 Open-Meteo 抓取最新天氣
-  useEffect(() => {
-    const fetchWeather = async () => {
-      const currentCityConfig = cityConfigs.find(c => c.dayIndexes.includes(activeDay));
-      if (!currentCityConfig) {
-        setWeatherStatus({
-          hasConfig: false,
-          cityName: '',
-          isTooFar: false,
-          daysUntil: 0,
-          advice: '請先在下方新增城市並勾選日期以獲取即時天氣'
-        });
-        return;
+  // 🌦️ 即時抓取天氣主函式（加強城市名稱容錯，相容「大阪市」轉「大阪」）
+  const fetchWeatherForDay = async (dayNum: number, configs: CityWeatherConfig[]) => {
+    const currentCityConfig = configs.find(c => c.dayIndexes.includes(dayNum));
+    if (!currentCityConfig) {
+      setWeatherStatus({
+        hasConfig: false,
+        cityName: '',
+        isTooFar: false,
+        daysUntil: 0,
+        advice: '請先在下方新增城市並勾選日期以獲取即時天氣'
+      });
+      return;
+    }
+
+    const targetDate = getDateObj(tripData.startDate, dayNum);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 14) {
+      setWeatherStatus({
+        hasConfig: true,
+        cityName: currentCityConfig.name,
+        isTooFar: true,
+        daysUntil: diffDays,
+        advice: '建議出發前 5 天查看最新即時預報'
+      });
+      return;
+    }
+
+    try {
+      const cleanSearchName = currentCityConfig.name.replace(/(市|區|縣|町)$/, '').trim() || currentCityConfig.name;
+
+      const geoRes = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cleanSearchName)}&count=1&language=zh&format=json`
+      );
+      const geoData = await geoRes.json();
+      
+      let lat = 34.6937;
+      let lon = 135.5023;
+
+      if (geoData.results && geoData.results.length > 0) {
+        lat = geoData.results[0].latitude;
+        lon = geoData.results[0].longitude;
       }
 
-      const targetDate = getDateObj(tripData.startDate, activeDay);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      targetDate.setHours(0, 0, 0, 0);
+      const weatherRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=auto`
+      );
+      const wData = await weatherRes.json();
 
-      const diffTime = targetDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (wData.daily && wData.daily.temperature_2m_max) {
+        const maxT = Math.round(wData.daily.temperature_2m_max[0]);
+        const minT = Math.round(wData.daily.temperature_2m_min[0]);
+        const avgTemp = Math.round((maxT + minT) / 2);
+        const pop = wData.daily.precipitation_probability_max[0] || 0;
+        const precip = wData.daily.precipitation_sum[0] || 0;
 
-      // 若離出發日超過 7 天，因氣象模型限制，提醒出發前再行查看
-      if (diffDays > 7) {
+        let advice = '天氣舒適，適合外出！';
+        if (pop >= 60 || precip > 5) advice = '降雨機率高，出門記得攜帶雨具 ☔';
+        else if (avgTemp <= 10) advice = '氣溫偏低，請準備保暖防風外套 🧣';
+        else if (avgTemp >= 28) advice = '天氣炎熱，請注意防曬並多補充水分 🥤';
+
         setWeatherStatus({
           hasConfig: true,
           cityName: currentCityConfig.name,
-          isTooFar: true,
-          daysUntil: diffDays,
-          advice: '建議出發前 5 天查看最新即時預報'
+          isTooFar: false,
+          daysUntil: Math.max(0, diffDays),
+          temp: avgTemp,
+          pop,
+          precip,
+          advice
         });
-        return;
       }
+    } catch (err) {
+      console.warn('Weather fetch error:', err);
+    }
+  };
 
-      try {
-        // 1. 取得城市經緯度
-        const geoRes = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(currentCityConfig.name)}&count=1&language=zh&format=json`
-        );
-        const geoData = await geoRes.json();
-        if (!geoData.results || geoData.results.length === 0) {
-          setWeatherStatus({
-            hasConfig: true,
-            cityName: currentCityConfig.name,
-            isTooFar: false,
-            daysUntil: diffDays,
-            temp: 20,
-            pop: 10,
-            precip: 0,
-            advice: '查無該城市經緯度，建議輸入通用名稱如「東京」'
-          });
-          return;
-        }
-
-        const { latitude, longitude } = geoData.results[0];
-
-        // 2. 抓取氣象模型最新溫度、降雨機率與降雨量
-        const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=auto`
-        );
-        const wData = await weatherRes.json();
-
-        if (wData.daily && wData.daily.temperature_2m_max) {
-          const maxT = Math.round(wData.daily.temperature_2m_max[0]);
-          const minT = Math.round(wData.daily.temperature_2m_min[0]);
-          const avgTemp = Math.round((maxT + minT) / 2);
-          const pop = wData.daily.precipitation_probability_max[0] || 0;
-          const precip = wData.daily.precipitation_sum[0] || 0;
-
-          let advice = '天氣舒適，適合外出！';
-          if (pop >= 60 || precip > 5) advice = '降雨機率高，出門記得攜帶雨具 ☔';
-          else if (avgTemp <= 10) advice = '氣溫偏低，請準備保暖防風外套 🧣';
-          else if (avgTemp >= 28) advice = '天氣炎熱，請注意防曬並多補充水分 🥤';
-
-          setWeatherStatus({
-            hasConfig: true,
-            cityName: currentCityConfig.name,
-            isTooFar: false,
-            daysUntil: diffDays,
-            temp: avgTemp,
-            pop,
-            precip,
-            advice
-          });
-        }
-      } catch (err) {
-        console.warn('Weather fetch error:', err);
-      }
-    };
-
-    fetchWeather();
+  useEffect(() => {
+    fetchWeatherForDay(activeDay, cityConfigs);
   }, [activeDay, cityConfigs, tripData.startDate]);
+
   const updateLocalState = (c: any) => {
     if (!c) return;
     setRecords(c.records || []);
@@ -1810,7 +1757,10 @@ function MainApp({
     setJournals(c.journals || []);
     setFlights(c.flights || []);
     setBookings(c.bookings || []);
-    if (c.cityConfigs) setCityConfigs(c.cityConfigs);
+    if (c.cityConfigs) {
+      setCityConfigs(c.cityConfigs);
+      fetchWeatherForDay(activeDay, c.cityConfigs);
+    }
     localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(c));
   };
 
@@ -1822,9 +1772,7 @@ function MainApp({
 
     const loadCloudData = async () => {
       const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
-      if (data?.content) {
-        updateLocalState(data.content);
-      }
+      if (data?.content) updateLocalState(data.content);
     };
     loadCloudData();
 
@@ -2074,6 +2022,7 @@ function MainApp({
       <div className="px-4 mt-4">
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
+            {/* 🌦️ 頂部天氣卡片：支援 Google 官方天氣一鍵開啟 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
@@ -2095,13 +2044,27 @@ function MainApp({
                       <span className="text-[10px] opacity-75 font-mono">D{activeDay} ({dynamicTripDates[activeDay - 1]})</span>
                     </div>
                     <h3 className="text-lg font-black mt-2">距離出發日還有 {weatherStatus.daysUntil} 天</h3>
-                    <p className="text-[11px] opacity-85 mt-1 italic">💡 還沒辦法提供即時天氣預報，建議出發前 5 天查看喔！</p>
+                    <p className="text-[11px] opacity-85 mt-1 italic">💡 距離出發日較遠，建議出發前 5 天查看即時預報！</p>
+                    <button
+                      type="button"
+                      onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`, '_blank')}
+                      className="mt-3 text-[10px] bg-white/25 hover:bg-white/35 px-3 py-1.5 rounded-xl font-black text-white flex items-center gap-1 active:scale-95 transition-all"
+                    >
+                      🔍 查看 Google {weatherStatus.cityName} 即時天氣
+                    </button>
                   </div>
                 ) : (
                   <div>
                     <div className="flex justify-between items-start pr-12">
                       <h2 className="text-5xl font-mono tracking-tighter">{weatherStatus.temp}°C</h2>
-                      <span className="text-xs bg-white/20 px-3 py-1 rounded-full uppercase tracking-widest">📍 {weatherStatus.cityName}</span>
+                      <button
+                        type="button"
+                        onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(weatherStatus.cityName)}+天氣`, '_blank')}
+                        className="text-xs bg-white/20 hover:bg-white/35 px-3 py-1 rounded-full uppercase tracking-widest active:scale-95 transition-all"
+                        title="點擊查看 Google 官方詳細天氣"
+                      >
+                        📍 {weatherStatus.cityName} ↗
+                      </button>
                     </div>
                     <div className="flex justify-between items-end mt-3">
                         <p className="text-[10px] uppercase opacity-70 font-black">Rain/Snow: {weatherStatus.pop}% | {weatherStatus.precip}mm</p>
@@ -2128,6 +2091,7 @@ function MainApp({
                         const next = [...cityConfigs, { id: Date.now().toString(), name: newCityName.trim(), dayIndexes: [activeDay] }];
                         setCityConfigs(next);
                         sync({ cityConfigs: next });
+                        fetchWeatherForDay(activeDay, next);
                         setNewCityName('');
                         setCitySuggestions([]);
                       }}
@@ -2168,6 +2132,7 @@ function MainApp({
                             const next = cityConfigs.filter(item => item.id !== c.id);
                             setCityConfigs(next);
                             sync({ cityConfigs: next });
+                            fetchWeatherForDay(activeDay, next);
                           }}
                           className="text-red-400 text-xs font-black"
                         >
@@ -2191,6 +2156,7 @@ function MainApp({
                                   const next = cityConfigs.map(item => item.id === c.id ? { ...item, dayIndexes: newDays } : item);
                                   setCityConfigs(next);
                                   sync({ cityConfigs: next });
+                                  fetchWeatherForDay(activeDay, next);
                                 }}
                                 className="hidden"
                               />
@@ -2213,28 +2179,27 @@ function MainApp({
             )}
             
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-    {dynamicTripDates.map((dateStr, idx) => {
-      const d = idx + 1;
-      const [mDate, rawDay] = dateStr.includes(' ') ? dateStr.split(' ') : [dateStr, ''];
-      // 將 "(四)" 去除括號，取得乾淨文字 "四"，再組合為 "星期四" 或 "週四"
-      const cleanDay = rawDay.replace(/[()]/g, '');
-      const dayLabel = cleanDay ? `星期${cleanDay}` : ''; // 若習慣簡短版可改為 `週${cleanDay}`
+              {dynamicTripDates.map((dateStr, idx) => {
+                const d = idx + 1;
+                const [mDate, rawDay] = dateStr.includes(' ') ? dateStr.split(' ') : [dateStr, ''];
+                const cleanDay = rawDay.replace(/[()]/g, '');
+                const dayLabel = cleanDay ? `星期${cleanDay}` : '';
 
-      return (
-        <button 
-          key={d} 
-          onClick={()=>setActiveDay(d)} 
-          className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-500 border border-gray-200'}`}
-        >
-          <span className="text-[10px] font-bold">{mDate}</span>
-          <span className="text-xl font-black">{d}</span>
-          <span className={`text-[9px] font-black ${activeDay===d ? 'text-white/90' : 'text-emerald-700'}`}>
-            {dayLabel}
-          </span>
-        </button>
-      );
-    })}
-</div>
+                return (
+                  <button 
+                    key={d} 
+                    onClick={() => setActiveDay(d)} 
+                    className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-500 border border-gray-200'}`}
+                  >
+                    <span className="text-[10px] font-bold">{mDate}</span>
+                    <span className="text-xl font-black">{d}</span>
+                    <span className={`text-[9px] font-black ${activeDay===d ? 'text-white/90' : 'text-emerald-700'}`}>
+                      {dayLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
             <div className="mt-8 space-y-8 relative">
                 <div className="absolute left-[19px] top-0 bottom-0 w-0.5 border-dashed border-l border-gray-200"></div>
@@ -2519,7 +2484,6 @@ function MainApp({
                       ))}
                     </div>
 
-                    {/* 💥 精簡首頁：代墊設定按鈕（點選開啟獨立大視窗彈窗） */}
                     <div className="mb-6">
                       <button
                         type="button"
@@ -3193,7 +3157,6 @@ function MainApp({
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
                 <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
-                
                 <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
                 
                 <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
@@ -3351,7 +3314,6 @@ function MainApp({
             </div>
 
             <div className="overflow-y-auto flex-1 pr-1 space-y-5">
-              {/* 頂部切換頁籤 */}
               <div className="flex bg-gray-100 p-1.5 rounded-2xl">
                 <button
                   type="button"
@@ -3419,7 +3381,6 @@ function MainApp({
                       className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black placeholder:text-gray-400"
                     />
 
-                    {/* 快速標籤 */}
                     <div className="flex gap-2 mt-2">
                       <span className="text-[10px] text-gray-400 py-1 font-black">快速選單：</span>
                       {['家人', '朋友', '同事', '親戚'].map(tag => (
@@ -3451,7 +3412,6 @@ function MainApp({
               )}
             </div>
 
-            {/* 💥 底部操作：取消 (紅字) / 保存 */}
             <div className="flex gap-3 mt-6 pt-3 border-t border-gray-100 shrink-0">
               <button
                 type="button"
@@ -3919,12 +3879,8 @@ function MainApp({
                 };
                 
                 const nextMembers = allMembers.map(m => m.id === finalMember.id ? finalMember : m);
-
                 onUpdateMembers(nextMembers);
-                
-                if (finalMember.id === user.id) {
-                  onUpdateUser(finalMember);
-                }
+                if (finalMember.id === user.id) onUpdateUser(finalMember);
 
                 alert("✅ 資料修改成功！");
                 setEditingMemberModal(null);
