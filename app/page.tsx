@@ -1401,7 +1401,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1453,7 +1452,6 @@ function TripSelector({
         </div>
       )}
 
-      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1581,7 +1579,7 @@ function MainApp({
   const [payMethod, setPayMethod] = useState(''); 
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
-  // 💥 記帳代墊獨立大彈窗 Modal 相關狀態
+  // 記帳代墊獨立大彈窗 Modal 相關狀態
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [isAdvanceConfigured, setIsAdvanceConfigured] = useState(false);
   const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
@@ -1594,7 +1592,7 @@ function MainApp({
   const [tempAdvOtherPerson, setTempAdvOtherPerson] = useState('');
   const [tempAdvOtherNote, setTempAdvOtherNote] = useState('');
 
-  // 💥 排除自己：旅伴代墊名單中絕不出現當前的付款人
+  // 排除自己：旅伴代墊名單中絕不出現當前的付款人
   const otherTripMembers = useMemo(() => {
     return allMembers.filter(m => currentMemberIds.includes(m.id) && m.id !== expensePayerId);
   }, [allMembers, currentMemberIds, expensePayerId]);
@@ -1667,7 +1665,7 @@ function MainApp({
     fetchRates();
   }, []);
 
-  // 🌦️ 即時抓取天氣主函式（加強城市名稱容錯，相容「大阪市」轉「大阪」）
+  // 即時抓取天氣主函式（加強城市名稱容錯，相容「大阪市」轉「大阪」）
   const fetchWeatherForDay = async (dayNum: number, configs: CityWeatherConfig[]) => {
     const currentCityConfig = configs.find(c => c.dayIndexes.includes(dayNum));
     if (!currentCityConfig) {
@@ -1753,7 +1751,7 @@ function MainApp({
     fetchWeatherForDay(activeDay, cityConfigs);
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 🔍 1. 城市輸入即時自動搜尋推薦 (Debounce 300ms)
+  // 1. 城市輸入即時自動搜尋推薦 (Debounce 300ms)
   useEffect(() => {
     if (!newCityName.trim()) {
       setCitySuggestions([]);
@@ -1778,7 +1776,7 @@ function MainApp({
     return () => clearTimeout(timer);
   }, [newCityName]);
 
-  // 📍 2. 行程景點地標即時自動搜尋推薦 (Debounce 350ms)
+  // 2. 行程景點地標即時自動搜尋推薦 (Debounce 350ms)
   useEffect(() => {
     if (isSelectingPlaceRef.current) {
       isSelectingPlaceRef.current = false;
@@ -1886,7 +1884,7 @@ function MainApp({
     });
   }, [flights]);
 
-  // 💥 純月日比對邏輯，徹底解決帶星期比對為 0 元的 Bug
+  // 純月日比對邏輯，徹底解決帶星期比對為 0 元的 Bug
   const pureTripDates = useMemo(() => {
     return dynamicTripDates.map(dStr => dStr.split(' ')[0]);
   }, [dynamicTripDates]);
@@ -1957,7 +1955,7 @@ function MainApp({
     return { totalTwd, categoryTotals, dateGroups, slices, memberBars };
   }, [filteredRecords, dynamicTripDates]);
 
-  // 💥 結清代墊款處理函式
+  // 結清代墊款處理函式
   const handleSettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -1996,7 +1994,7 @@ function MainApp({
     }
   };
 
-  // 💥 退回結清款項 (恢復為未結清狀態)
+  // 退回結清款項 (恢復為未結清狀態)
   const handleUnsettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -2134,7 +2132,7 @@ function MainApp({
       <div className="px-4 mt-4">
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
-            {/* 🌦️ 頂部天氣卡片：使用 location.href 移除手機空白分頁 */}
+            {/* 頂部天氣卡片：使用 location.href 移除手機空白分頁 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
@@ -2213,7 +2211,7 @@ function MainApp({
                       + 新增
                     </button>
 
-                    {/* 🏙️ 城市自動搜尋下拉推薦選單 */}
+                    {/* 城市自動搜尋下拉推薦選單 */}
                     {citySuggestions.length > 0 && (
                       <div className="absolute top-11 left-0 right-14 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                         {citySuggestions.map((cityName, idx) => (
@@ -2690,7 +2688,7 @@ function MainApp({
                     ) : (
                       records.filter(r => r.isAdvance).map(r => {
                         const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
-                        // 🔒 權限限制：只有先掏錢的付款人本人，或管理員 Wayne 可以結清／退回
+                        // 權限限制：只有先掏錢的付款人本人，或管理員 Wayne 可以結清／退回
                         const canOperateAdvance = (user.id === (r.originalPayerId || r.payerId)) || isWayne;
 
                         return (
@@ -3438,7 +3436,7 @@ function MainApp({
         )}
       </div>
 
-      {/* 💥 獨立大視窗彈窗：幫人代墊款項設定 Modal */}
+      {/* 獨立大視窗彈窗：幫人代墊款項設定 Modal */}
       {showAdvanceModal && (
         <div className="fixed inset-0 bg-black/80 z-[160] p-4 flex items-center justify-center font-black">
           <div className="bg-white w-full max-w-lg max-h-[90vh] p-7 rounded-[44px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
@@ -3558,7 +3556,7 @@ function MainApp({
               )}
             </div>
 
-            {/* 💥 底部操作：取消 (紅字) / 保存 */}
+            {/* 底部操作：取消 (紅字) / 保存 */}
             <div className="flex gap-3 mt-6 pt-3 border-t border-gray-100 shrink-0">
               <button
                 type="button"
@@ -4088,7 +4086,7 @@ function MainApp({
                     {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
                   </div>
 
-                  {/* 📍 行程景點地標自動搜尋推薦選單 */}
+                  {/* 行程景點地標自動搜尋推薦選單 */}
                   {placeSuggestions.length > 0 && (
                     <>
                       <div 
