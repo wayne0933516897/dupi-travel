@@ -178,8 +178,9 @@ function getNowTimestampString(): string {
 
 function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean = true): string[] {
   if (!startStr || !endStr) return [];
-  const start = new Date(startStr);
-  const end = new Date(endStr);
+  // 將 YYYY-MM-DD 轉為 YYYY/MM/DD 避免不同瀏覽器時區解析為 UTC 導致日期或星期偏移
+  const start = new Date(startStr.replace(/-/g, '/'));
+  const end = new Date(endStr.replace(/-/g, '/'));
   const daysOfWeek = ['日', '一', '二', '三', '四', '五', '六'];
   
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
@@ -194,6 +195,7 @@ function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean =
     const m = String(cur.getMonth() + 1).padStart(2, '0');
     const d = String(cur.getDate()).padStart(2, '0');
     const dayName = daysOfWeek[cur.getDay()];
+    // 儲存格式如 "12/24 (四)"
     dates.push(withDayOfWeek ? `${m}/${d} (${dayName})` : `${m}/${d}`);
     cur.setDate(cur.getDate() + 1);
   }
@@ -2120,7 +2122,11 @@ function MainApp({
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
     {dynamicTripDates.map((dateStr, idx) => {
       const d = idx + 1;
-      const [mDate, dayName] = dateStr.includes(' ') ? dateStr.split(' ') : [dateStr, ''];
+      const [mDate, rawDay] = dateStr.includes(' ') ? dateStr.split(' ') : [dateStr, ''];
+      // 將 "(四)" 去除括號，取得乾淨文字 "四"，再組合為 "星期四" 或 "週四"
+      const cleanDay = rawDay.replace(/[()]/g, '');
+      const dayLabel = cleanDay ? `星期${cleanDay}` : ''; // 若習慣簡短版可改為 `週${cleanDay}`
+
       return (
         <button 
           key={d} 
@@ -2129,7 +2135,9 @@ function MainApp({
         >
           <span className="text-[10px] font-bold">{mDate}</span>
           <span className="text-xl font-black">{d}</span>
-          <span className={`text-[9px] font-black ${activeDay===d ? 'text-white/90' : 'text-emerald-700'}`}>{dayName.replace(/[()]/g, '週')}</span>
+          <span className={`text-[9px] font-black ${activeDay===d ? 'text-white/90' : 'text-emerald-700'}`}>
+            {dayLabel}
+          </span>
         </button>
       );
     })}
