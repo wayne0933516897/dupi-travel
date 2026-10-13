@@ -1709,6 +1709,99 @@ function MainApp({
     fetchRates();
   }, []);
 
+  // 🌦️ 接在 fetchRates 下方：當切換天數 (activeDay)、行程起訖日期或城市設定改變時，自動向 Open-Meteo 抓取最新天氣
+  useEffect(() => {
+    const fetchWeather = async () => {
+      const currentCityConfig = cityConfigs.find(c => c.dayIndexes.includes(activeDay));
+      if (!currentCityConfig) {
+        setWeatherStatus({
+          hasConfig: false,
+          cityName: '',
+          isTooFar: false,
+          daysUntil: 0,
+          advice: '請先在下方新增城市並勾選日期以獲取即時天氣'
+        });
+        return;
+      }
+
+      const targetDate = getDateObj(tripData.startDate, activeDay);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const diffTime = targetDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // 若離出發日超過 7 天，因氣象模型限制，提醒出發前再行查看
+      if (diffDays > 7) {
+        setWeatherStatus({
+          hasConfig: true,
+          cityName: currentCityConfig.name,
+          isTooFar: true,
+          daysUntil: diffDays,
+          advice: '建議出發前 5 天查看最新即時預報'
+        });
+        return;
+      }
+
+      try {
+        // 1. 取得城市經緯度
+        const geoRes = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(currentCityConfig.name)}&count=1&language=zh&format=json`
+        );
+        const geoData = await geoRes.json();
+        if (!geoData.results || geoData.results.length === 0) {
+          setWeatherStatus({
+            hasConfig: true,
+            cityName: currentCityConfig.name,
+            isTooFar: false,
+            daysUntil: diffDays,
+            temp: 20,
+            pop: 10,
+            precip: 0,
+            advice: '查無該城市經緯度，建議輸入通用名稱如「東京」'
+          });
+          return;
+        }
+
+        const { latitude, longitude } = geoData.results[0];
+
+        // 2. 抓取氣象模型最新溫度、降雨機率與降雨量
+        const weatherRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=auto`
+        );
+        const wData = await weatherRes.json();
+
+        if (wData.daily && wData.daily.temperature_2m_max) {
+          const maxT = Math.round(wData.daily.temperature_2m_max[0]);
+          const minT = Math.round(wData.daily.temperature_2m_min[0]);
+          const avgTemp = Math.round((maxT + minT) / 2);
+          const pop = wData.daily.precipitation_probability_max[0] || 0;
+          const precip = wData.daily.precipitation_sum[0] || 0;
+
+          let advice = '天氣舒適，適合外出！';
+          if (pop >= 60 || precip > 5) advice = '降雨機率高，出門記得攜帶雨具 ☔';
+          else if (avgTemp <= 10) advice = '氣溫偏低，請準備保暖防風外套 🧣';
+          else if (avgTemp >= 28) advice = '天氣炎熱，請注意防曬並多補充水分 🥤';
+
+          setWeatherStatus({
+            hasConfig: true,
+            cityName: currentCityConfig.name,
+            isTooFar: false,
+            daysUntil: diffDays,
+            temp: avgTemp,
+            pop,
+            precip,
+            advice
+          });
+        }
+      } catch (err) {
+        console.warn('Weather fetch error:', err);
+      }
+    };
+
+    fetchWeather();
+  }, [activeDay, cityConfigs, tripData.startDate]);
   const updateLocalState = (c: any) => {
     if (!c) return;
     setRecords(c.records || []);
