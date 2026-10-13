@@ -176,19 +176,25 @@ function getNowTimestampString(): string {
   return `${m}/${d} ${hh}:${mm}`;
 }
 
-function getDatesList(startStr: string, endStr: string): string[] {
+function getDatesList(startStr: string, endStr: string, withDayOfWeek: boolean = true): string[] {
   if (!startStr || !endStr) return [];
   const start = new Date(startStr);
   const end = new Date(endStr);
+  const daysOfWeek = ['日', '一', '二', '三', '四', '五', '六'];
+  
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
-    return [startStr.slice(5).replace('-', '/')];
+    const d = startStr.slice(5).replace('-', '/');
+    const day = isNaN(start.getTime()) ? '' : ` (${daysOfWeek[start.getDay()]})`;
+    return [`${d}${withDayOfWeek ? day : ''}`];
   }
+  
   const dates: string[] = [];
   const cur = new Date(start);
   while (cur <= end) {
     const m = String(cur.getMonth() + 1).padStart(2, '0');
     const d = String(cur.getDate()).padStart(2, '0');
-    dates.push(`${m}/${d}`);
+    const dayName = daysOfWeek[cur.getDay()];
+    dates.push(withDayOfWeek ? `${m}/${d} (${dayName})` : `${m}/${d}`);
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
@@ -2112,16 +2118,22 @@ function MainApp({
             )}
             
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                {dynamicTripDates.map((dateStr, idx) => {
-                  const d = idx + 1;
-                  return (
-                    <button key={d} onClick={()=>setActiveDay(d)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-500 border border-gray-200'}`}>
-                      <span className="text-[10px]">{dateStr}</span>
-                      <span className="text-xl">{d}</span>
-                    </button>
-                  );
-                })}
-            </div>
+    {dynamicTripDates.map((dateStr, idx) => {
+      const d = idx + 1;
+      const [mDate, dayName] = dateStr.includes(' ') ? dateStr.split(' ') : [dateStr, ''];
+      return (
+        <button 
+          key={d} 
+          onClick={()=>setActiveDay(d)} 
+          className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${activeDay===d?'bg-[#E9C46A] text-white shadow-lg scale-105':'bg-white text-gray-500 border border-gray-200'}`}
+        >
+          <span className="text-[10px] font-bold">{mDate}</span>
+          <span className="text-xl font-black">{d}</span>
+          <span className={`text-[9px] font-black ${activeDay===d ? 'text-white/90' : 'text-emerald-700'}`}>{dayName.replace(/[()]/g, '週')}</span>
+        </button>
+      );
+    })}
+</div>
 
             <div className="mt-8 space-y-8 relative">
                 <div className="absolute left-[19px] top-0 bottom-0 w-0.5 border-dashed border-l border-gray-200"></div>
