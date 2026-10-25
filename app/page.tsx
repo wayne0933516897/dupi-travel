@@ -1401,6 +1401,7 @@ function TripSelector({
         </div>
       )}
 
+      {/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1452,6 +1453,7 @@ function TripSelector({
         </div>
       )}
 
+      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1531,6 +1533,12 @@ function MainApp({
 
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
+  // 景點詳細資料彈窗 (Google Maps 風格 Bottom Sheet)
+  const [viewingPlanDetail, setViewingPlanDetail] = useState<Plan | null>(null);
+
+  // 💥 準備清單詳細資料彈窗 (放大備註展示)
+  const [viewingTodoDetail, setViewingTodoDetail] = useState<TodoItem | null>(null);
+
   const [editingVoucherModal, setEditingVoucherModal] = useState<BookingDoc | null>(null);
   const [editingExpenseModal, setEditingExpenseModal] = useState<ExpenseRecord | null>(null);
   const [editingJournalModal, setEditingJournalModal] = useState<JournalEntry | null>(null);
@@ -1577,6 +1585,7 @@ function MainApp({
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
   const [payMethod, setPayMethod] = useState(''); 
+  const [otherPayMethodNote, setOtherPayMethodNote] = useState(''); // 💥 付款方式為「其他」時的自訂填寫內容
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
   // 記帳代墊獨立大彈窗 Modal 相關狀態
@@ -1876,13 +1885,18 @@ function MainApp({
     onUpdateTrip(updatedTrip);
   };
 
+  // 💥 1: 修正航班時間排序（依行程第幾天排序，確保先去後回）
   const sortedFlights = useMemo(() => {
     return [...flights].sort((a, b) => {
-      const compDate = a.date.localeCompare(b.date);
-      if (compDate !== 0) return compDate;
+      const indexA = dynamicTripDates.indexOf(a.date);
+      const indexB = dynamicTripDates.indexOf(b.date);
+      const validA = indexA === -1 ? 9999 : indexA;
+      const validB = indexB === -1 ? 9999 : indexB;
+
+      if (validA !== validB) return validA - validB;
       return a.depTime.localeCompare(b.depTime);
     });
-  }, [flights]);
+  }, [flights, dynamicTripDates]);
 
   // 純月日比對邏輯，徹底解決帶星期比對為 0 元的 Bug
   const pureTripDates = useMemo(() => {
@@ -2321,7 +2335,11 @@ function MainApp({
                             <div className="w-4 h-4 rounded-full bg-white border-4 border-[#86A760] z-10 mt-1 shadow-sm"></div>
                             <span className="text-[10px] text-gray-500 mt-2 font-mono font-black">{item.time}</span>
                         </div>
-                        <div className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative group">
+                        {/* 點擊白色區域直接開啟 Google Maps 風格的景點詳細資訊視窗 */}
+                        <div 
+                          onClick={() => setViewingPlanDetail(item)}
+                          className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative group cursor-pointer hover:shadow-md active:scale-98 transition-all"
+                        >
                             <div className="flex justify-between items-start">
                               <h4 className="font-black text-sm text-black">{item.icon} {item.title}</h4>
                               {item.lastUpdatedById && (
@@ -2330,7 +2348,7 @@ function MainApp({
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black">{item.desc}</p>
+                            <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black line-clamp-2">{item.desc}</p>
                             <div className="mt-4 flex justify-between items-center">
                                 <button 
                                   onClick={(e) => { 
@@ -2350,6 +2368,182 @@ function MainApp({
                     </div>
                 ))}
                 <button onClick={()=> { setPlanForm({time:'09:00', title:'', desc:'', icon:'📍'}); setPlaceSuggestions([]); setShowPlanModal({show:true,type:'add'}); }} className="ml-14 w-[calc(100%-3.5rem)] py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-black active:bg-gray-50">+ ADD NEW STOP</button>
+            </div>
+          </div>
+        )}
+
+        {/* 💥 3: 行程詳細資訊彈窗優化（移除編輯按鈕、備註文字顯著放大排版） */}
+        {viewingPlanDetail && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 font-black"
+            onClick={() => setViewingPlanDetail(null)}
+          >
+            <div 
+              className="bg-white w-full max-w-lg rounded-t-[40px] sm:rounded-[40px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto text-black flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden shrink-0" />
+
+              <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-3 overflow-hidden pr-2">
+                  <span className="text-3xl shrink-0 p-2 bg-[#F9F8F3] rounded-2xl border border-gray-200">
+                    {viewingPlanDetail.icon || '📍'}
+                  </span>
+                  <div className="overflow-hidden">
+                    <h3 className="text-lg font-black text-black truncate">{viewingPlanDetail.title}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-mono">
+                        ⏰ {viewingPlanDetail.time}
+                      </span>
+                      {viewingPlanDetail.lastUpdatedById && (
+                        <span className="text-[9px] text-gray-400">
+                          最後編輯: {getMember(viewingPlanDetail.lastUpdatedById).name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setViewingPlanDetail(null)} 
+                  className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black shrink-0 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* 雙快捷鍵：地圖導航 & 評價搜尋 */}
+              <div className="grid grid-cols-2 gap-3 mb-5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(viewingPlanDetail.title)}`;
+                  }}
+                  className="flex flex-col items-center justify-center py-3 px-2 bg-emerald-50 hover:bg-emerald-100 text-[#5E9E8E] rounded-2xl active:scale-95 transition-all border border-emerald-100"
+                >
+                  <span className="text-lg mb-0.5">🧭</span>
+                  <span className="text-xs font-black">地圖導航</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = `https://www.google.com/search?q=${encodeURIComponent(viewingPlanDetail.title)}`;
+                  }}
+                  className="flex flex-col items-center justify-center py-3 px-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-2xl active:scale-95 transition-all border border-blue-100"
+                >
+                  <span className="text-lg mb-0.5">🔍</span>
+                  <span className="text-xs font-black">評價與資訊</span>
+                </button>
+              </div>
+
+              {/* 備註與說明區塊：字體與行距放大優化 */}
+              <div className="bg-gray-50 rounded-3xl p-5 border border-gray-100 overflow-y-auto flex-1 mb-5">
+                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">備註與詳細說明</p>
+                {viewingPlanDetail.desc ? (
+                  <p className="text-base text-gray-800 leading-relaxed font-normal whitespace-pre-wrap">
+                    {viewingPlanDetail.desc}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 italic font-normal py-4 text-center">
+                    目前尚未填寫詳細備註～
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingPlanDetail(null)}
+                className="w-full py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform shrink-0"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 💥 4: 準備清單詳細備註彈窗 */}
+        {viewingTodoDetail && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 font-black"
+            onClick={() => setViewingTodoDetail(null)}
+          >
+            <div 
+              className="bg-white w-full max-w-lg rounded-t-[40px] sm:rounded-[40px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto text-black flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden shrink-0" />
+
+              <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-3 overflow-hidden pr-2">
+                  <span className="text-2xl shrink-0 p-2.5 bg-[#F9F8F3] rounded-2xl border border-gray-200">
+                    {viewingTodoDetail.category === '待辦' ? '💼' : viewingTodoDetail.category === '行李' ? '🧳' : '🛍️'}
+                  </span>
+                  <div className="overflow-hidden">
+                    <h3 className="text-lg font-black text-black truncate">{viewingTodoDetail.task}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-mono">
+                        {viewingTodoDetail.category}
+                      </span>
+                      {viewingTodoDetail.lastUpdatedById && (
+                        <span className="text-[9px] text-gray-400">
+                          最後編輯: {getMember(viewingTodoDetail.lastUpdatedById).name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setViewingTodoDetail(null)} 
+                  className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black shrink-0 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* 指派人員與勾選狀態 */}
+              <div className="mb-4 shrink-0">
+                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">指派成員與進度</p>
+                <div className="flex gap-2 flex-wrap">
+                  {viewingTodoDetail.assigneeIds.map(id => {
+                    const m = getMember(id);
+                    const isDone = viewingTodoDetail.completedAssigneeIds.includes(id);
+                    return (
+                      <span 
+                        key={id} 
+                        className={`text-xs px-3 py-1.5 rounded-full font-black flex items-center gap-1.5 ${isDone ? 'bg-green-600 text-white shadow-xs' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}
+                      >
+                        <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
+                        <span>{m.name}</span>
+                        <span>{isDone ? '✅ 已完成' : '⏳ 待處理'}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 備註與說明區塊 */}
+              <div className="bg-gray-50 rounded-3xl p-5 border border-gray-100 overflow-y-auto flex-1 mb-5">
+                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">備註與詳細說明</p>
+                {viewingTodoDetail.note ? (
+                  <p className="text-base text-gray-800 leading-relaxed font-normal whitespace-pre-wrap">
+                    {viewingTodoDetail.note}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 italic font-normal py-4 text-center">
+                    目前尚未填寫詳細備註～
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingTodoDetail(null)}
+                className="w-full py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform shrink-0"
+              >
+                關閉
+              </button>
             </div>
           </div>
         )}
@@ -2570,22 +2764,39 @@ function MainApp({
                       className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black text-lg border border-gray-200 mb-4 placeholder:text-gray-400" 
                     />
                     
+                    {/* 💥 2: 付款方式新增「其他」，點選後即時滑出備註說明輸入框 */}
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-[10px] text-gray-500 ml-2 font-black">PAY METHOD (付款方式 - 必填)</p>
                       {!payMethod && <span className="text-[9px] text-rose-500 font-bold">請點選一種付款方式</span>}
                     </div>
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                      {['現金','信用卡','Suica','PayPay'].map(p=>(
+                    <div className="grid grid-cols-5 gap-1.5 mb-2">
+                      {['現金','信用卡','Suica','PayPay','其他'].map(p=>(
                         <button 
                           key={p} 
                           type="button"
-                          onClick={()=>setPayMethod(p)} 
+                          onClick={()=>{
+                            setPayMethod(p);
+                            if (p !== '其他') setOtherPayMethodNote('');
+                          }} 
                           className={`py-2 rounded-xl text-[10px] font-black transition-all ${payMethod===p?'bg-[#5E9E8E] text-white shadow-md scale-105':'bg-gray-100 text-gray-500'}`}
                         >
                           {p}
                         </button>
                       ))}
                     </div>
+
+                    {/* 付款方式為「其他」時滑出說明輸入框 */}
+                    {payMethod === '其他' && (
+                      <div className="mb-4 animate-in slide-in-from-top-2 duration-150">
+                        <input
+                          type="text"
+                          value={otherPayMethodNote}
+                          onChange={(e) => setOtherPayMethodNote(e.target.value)}
+                          placeholder="請說明付款方式 (例如: 街口支付、LINE Pay、轉帳)..."
+                          className="w-full p-3 bg-emerald-50/60 rounded-xl text-xs outline-none font-black text-black placeholder:text-gray-400 border border-emerald-200"
+                        />
+                      </div>
+                    )}
 
                     <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
@@ -2642,13 +2853,18 @@ function MainApp({
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
                         const autoTimestamp = getNowTimestampString();
 
+                        // 組合付款方式字串（若有自訂其他備註則帶入）
+                        const finalPayMethod = payMethod === '其他' && otherPayMethodNote.trim()
+                          ? `其他 (${otherPayMethodNote.trim()})`
+                          : payMethod;
+
                         const rec: ExpenseRecord = {
                           id: Date.now(), 
                           category: category.trim(), 
                           amount, 
                           currency, 
                           twdAmount: twdVal, 
-                          payMethod, 
+                          payMethod: finalPayMethod, 
                           payerId: expensePayerId, 
                           date: autoTimestamp,
                           note: expenseNote.trim(),
@@ -2670,6 +2886,7 @@ function MainApp({
                         setCategory(''); 
                         setExpenseNote('');
                         setPayMethod('');
+                        setOtherPayMethodNote('');
                         setIsAdvanceConfigured(false);
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
@@ -3291,6 +3508,7 @@ function MainApp({
           </div>
         )}
 
+        {/* --- [Tab: 準備] --- */}
         {activeTab === '準備' && (
           <div className="animate-in fade-in pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -3327,12 +3545,17 @@ function MainApp({
 
             <div className="space-y-4">
                 {todos.filter(t=>t.category===prepSubTab).map(todo => (
-                    <div key={todo.id} className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group font-black">
+                    /* 💥 4: 點擊卡片空白處彈出詳細備註大字彈窗 */
+                    <div 
+                      key={todo.id} 
+                      onClick={() => setViewingTodoDetail(todo)}
+                      className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group font-black cursor-pointer hover:shadow-lg active:scale-98 transition-all"
+                    >
                         <div className="flex flex-col flex-1 pr-4">
                             <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-30 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
-                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {todo.note}</p>}
+                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5 line-clamp-1">💬 {todo.note}</p>}
                             <p className="text-[9px] text-gray-400 mt-1">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
-                            <div className="flex gap-2 mt-2 flex-wrap">
+                            <div className="flex gap-2 mt-2 flex-wrap" onClick={e => e.stopPropagation()}>
                                 {todo.assigneeIds.map(id => {
                                     const m = getMember(id);
                                     const isDone = todo.completedAssigneeIds.includes(id);
@@ -3351,7 +3574,7 @@ function MainApp({
                                 })}
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                             <button onClick={()=>setEditingTodoModal(todo)} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
                             <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 text-lg active:text-red-500">✕</button>
                         </div>
@@ -4248,8 +4471,7 @@ export default function AppEntry() {
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
-
-    const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
+const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       const ensuredTrips = (tData.content as Trip[]).map(t => ({
         ...t,
