@@ -2798,14 +2798,20 @@ function MainApp({
                       </div>
                     )}
 
-                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-                      {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
-                        <button key={m.id} onClick={()=>setExpensePayerId(m.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}>
-                          <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" /> {m.name}
-                        </button>
-                      ))}
-                    </div>
+<p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
+<div className="flex flex-wrap gap-2 mb-4">
+  {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
+    <button 
+      key={m.id} 
+      type="button"
+      onClick={()=>setExpensePayerId(m.id)} 
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 whitespace-nowrap ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}
+    >
+      <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
+      <span>{m.name}</span>
+    </button>
+  ))}
+</div>
 
                     {/* 代墊設定按鈕 */}
                     <div className="mb-6">
@@ -3528,17 +3534,22 @@ function MainApp({
                  />
                 
                 <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
-                <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
-                    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
-                        <button key={m.id} onClick={()=>{
-                            const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
-                            setNewTodoInput({...newTodoInput, assigneeIds: ids});
-                        }} className={`p-2 px-4 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-inner scale-105':'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                          <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
-                          {m.name}
-                        </button>
-                    ))}
-                </div>
+<div className="flex flex-wrap gap-2 mb-6">
+    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
+        <button 
+          key={m.id} 
+          type="button"
+          onClick={()=>{
+            const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
+            setNewTodoInput({...newTodoInput, assigneeIds: ids});
+          }} 
+          className={`p-2 px-3.5 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-sm':'bg-gray-100 text-gray-500 border-gray-200'}`}
+        >
+          <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
+          <span>{m.name}</span>
+        </button>
+    ))}
+</div>
                 <button onClick={()=>{
                     if(!newTodoInput.task.trim()) return alert("請輸入事項名稱！");
                     if(newTodoInput.assigneeIds.length === 0) return alert("請至少選擇一位指派人員！");
