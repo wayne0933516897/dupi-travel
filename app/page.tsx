@@ -255,7 +255,7 @@ function ImageUploader({
   onUpload: (base64: string) => void, 
   label: string, 
   maxDimension?: number, 
-  quality?: number,
+  quality?: number, 
   forceSquare?: boolean
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -3519,7 +3519,13 @@ function MainApp({
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
                 <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
-                <input value={newTodoInput.note} onChange={e=>setNewTodoInput({...newTodoInput,note:e.target.value})} placeholder={`備註或詳細說明 (選填)...`} className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
+                <textarea 
+                 rows={3}
+                 value={newTodoInput.note} 
+                 onChange={e=>setNewTodoInput({...newTodoInput, note: e.target.value})} 
+                 placeholder={`備註或詳細說明 (選填，支援換行)...`} 
+                 className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200 leading-relaxed resize-none" 
+                 />
                 
                 <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
                 <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
@@ -3553,7 +3559,7 @@ function MainApp({
                     >
                         <div className="flex flex-col flex-1 pr-4">
                             <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-30 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
-                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5 line-clamp-1">💬 {todo.note}</p>}
+                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5 whitespace-pre-wrap leading-relaxed">💬 {todo.note}</p>}
                             <p className="text-[9px] text-gray-400 mt-1">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
                             <div className="flex gap-2 mt-2 flex-wrap" onClick={e => e.stopPropagation()}>
                                 {todo.assigneeIds.map(id => {
@@ -3937,22 +3943,47 @@ function MainApp({
 
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">付款方式</label>
-                <div className="grid grid-cols-4 gap-1.5 mt-1">
-                  {['現金','信用卡','Suica','PayPay'].map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setEditingExpenseModal({ ...editingExpenseModal, payMethod: p })}
-                      className={`py-2 rounded-xl text-[10px] font-black transition-all ${
-                        editingExpenseModal.payMethod === p 
-                          ? 'bg-[#5E9E8E] text-white shadow-xs' 
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-5 gap-1.5 mt-1">
+                  {['現金','信用卡','Suica','PayPay','其他'].map(p => {
+                    const isOther = editingExpenseModal.payMethod.startsWith('其他');
+                    const isSelected = p === '其他' ? isOther : editingExpenseModal.payMethod === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          if (p === '其他') {
+                            setEditingExpenseModal({ ...editingExpenseModal, payMethod: '其他' });
+                          } else {
+                            setEditingExpenseModal({ ...editingExpenseModal, payMethod: p });
+                          }
+                        }}
+                        className={`py-2 rounded-xl text-[10px] font-black transition-all ${
+                          isSelected 
+                            ? 'bg-[#5E9E8E] text-white shadow-xs' 
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
                 </div>
+                {editingExpenseModal.payMethod.startsWith('其他') && (
+                  <input
+                    type="text"
+                    defaultValue={editingExpenseModal.payMethod.replace(/^其他\s*\(?/, '').replace(/\)?$/, '')}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setEditingExpenseModal({
+                        ...editingExpenseModal,
+                        payMethod: val ? `其他 (${val})` : '其他'
+                      });
+                    }}
+                    placeholder="說明其他付款方式 (例如: LINE Pay)..."
+                    className="w-full p-2.5 bg-emerald-50 rounded-xl text-xs outline-none border border-emerald-200 mt-2 font-black"
+                  />
+                )}
               </div>
             </div>
 
@@ -4113,15 +4144,15 @@ function MainApp({
               </div>
 
               <div>
-                <label className="text-[10px] text-gray-400 ml-1">備註說明</label>
-                <input 
-                  type="text" 
-                  value={editingTodoModal.note || ''} 
-                  onChange={e => setEditingTodoModal({ ...editingTodoModal, note: e.target.value })} 
-                  placeholder="備註" 
-                  className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black" 
-                />
-              </div>
+  <label className="text-[10px] text-gray-400 ml-1">備註說明 (支援換行)</label>
+  <textarea 
+    rows={3}
+    value={editingTodoModal.note || ''} 
+    onChange={e => setEditingTodoModal({ ...editingTodoModal, note: e.target.value })} 
+    placeholder="備註說明..." 
+    className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black leading-relaxed resize-none" 
+  />
+</div>
 
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">指派人員</label>
@@ -4461,7 +4492,8 @@ export default function AppEntry() {
       const cachedM = localStorage.getItem('app_members_v26');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
-      } else {
+      } else
+      {
         const defaultM: Member[] = [
           { id:'1', account:'wayne', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
@@ -4471,7 +4503,8 @@ export default function AppEntry() {
         await supabase.from('trips').upsert({ id: '__app_members__', content: defaultM });
       }
     }
-const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
+
+    const { data: tData } = await supabase.from('trips').select('content').eq('id', '__app_trips__').single();
     if (tData?.content && Array.isArray(tData.content)) {
       const ensuredTrips = (tData.content as Trip[]).map(t => ({
         ...t,
