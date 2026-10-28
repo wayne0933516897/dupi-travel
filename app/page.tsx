@@ -38,6 +38,12 @@ interface ExpenseRecord {
   advanceOtherNote?: string;   // 幫其他人：備註說明
   isSettled?: boolean;
   originalPayerId?: string;
+  // 多人分帳結清相關欄位
+  isSplit?: boolean;
+  isSplitSettled?: boolean;
+  splitSettledTime?: string;
+  splitMemberIds?: string[];           // 參與分攤的成員 ID 清單
+  splitSettledMemberIds?: string[];    // 已個別結清的成員 ID 清單（支援單人獨立結清）
 }
 
 interface Plan {
@@ -57,6 +63,7 @@ interface TodoItem {
   completedAssigneeIds: string[];
   category: string;
   lastUpdatedById?: string;
+  image?: string; // 採購項目支援相片
 }
 
 interface JournalComment {
@@ -128,6 +135,74 @@ interface ChangelogItem {
   items: string[];
   enabled: boolean;
 }
+
+// 行李打包預設 5 大分類常數
+const DEFAULT_PACKING_CATEGORIES = [
+  {
+    category: '出行必備',
+    icon: '🛂',
+    items: [
+      '護照正本 (效期6個月以上)',
+      '護照影本 / 大頭照2張備用',
+      '身分證 / 健保卡',
+      '國際駕照 / 日文譯本 (自駕必備)',
+      '日幣現金 / 外幣信用卡 (至少2張備用)',
+      'Visit Japan Web (VJW) QR Code 截圖',
+      '海外旅遊平安險 / 不便險保單'
+    ]
+  },
+  {
+    category: '數位電器',
+    icon: '🔌',
+    items: [
+      '手機充電線 / 豆腐頭',
+      '行動電源 (需隨身攜帶，不可託運)',
+      '出國上網卡 / eSIM QR Code / 退卡針',
+      '萬國轉接頭 / 延長線',
+      '降噪耳機',
+      '相機 / 記憶卡 / 充電座 / 電池',
+      '智慧手錶充電器'
+    ]
+  },
+  {
+    category: '衣物配飾',
+    icon: '👕',
+    items: [
+      '換洗衣物 / 發熱衣 / 內搭',
+      '免洗內褲 / 免洗襪',
+      '保暖外套 / 防風防潑水外套',
+      '好走耐穿休閒運動鞋',
+      '遮陽帽 / 太陽眼鏡',
+      '晴雨兩用摺疊傘',
+      '髒衣收納袋 / 壓縮真空袋'
+    ]
+  },
+  {
+    category: '生活日用',
+    icon: '🧴',
+    items: [
+      '牙刷 / 牙膏 (部分環保飯店不提供)',
+      '洗面乳 / 個人護膚保養品旅行組',
+      '刮鬍刀 / 刮鬍泡',
+      '隨身衛生紙 / 濕紙巾 / 乾洗手',
+      '保溫杯 / 隨行環保水壺',
+      '保濕護唇膏 / 護手霜',
+      '指甲剪 / 防水夾鏈袋'
+    ]
+  },
+  {
+    category: '常備藥品',
+    icon: '💊',
+    items: [
+      '腸胃藥 / 止瀉藥',
+      '感冒藥 / 止痛退燒藥 (如 EVE)',
+      '暈車 / 暈機藥',
+      '綜合維他命 / B群',
+      'OK繃 / 痠痛貼布',
+      '個人常備慢籤處方藥'
+    ]
+  }
+];
 
 const PRESET_ANIMAL_AVATARS = [
   'https://api.dicebear.com/7.x/notionists/svg?seed=Bear&backgroundColor=b6e3f4',
@@ -516,7 +591,6 @@ function ImageUploader({
     </div>
   );
 }
-
 // 1. 登錄與註冊頁面
 function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m: Member) => void, allMembers: Member[], onRegister: (newM: Member) => void, loginIcon: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -600,7 +674,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
 
     const found = allMembers.find(m => {
       const matchAcc = (m.account && m.account.toLowerCase() === acc) || 
-                       (m.loginCode && m.loginCode.toLowerCase() === acc) ||
+                       (m.loginCode && m.loginCode.toLowerCase() === acc) || 
                        (m.name && m.name.toLowerCase() === acc);
       const matchPwd = m.loginCode === pwd;
       return matchAcc && matchPwd;
@@ -1328,7 +1402,7 @@ function TripSelector({
       )}
 
       {showJoinTripModal && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
             <h3 className="text-center italic mb-2 uppercase text-xl">加入旅行計劃</h3>
             <input type="text" placeholder="輸入 6 位代碼..." value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())} maxLength={6} className="w-full p-5 bg-gray-50 rounded-2xl mb-6 outline-none text-center text-2xl font-mono tracking-widest uppercase border border-gray-200" />
@@ -1387,7 +1461,7 @@ function TripSelector({
       )}
 
       {showLoginIconModal && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
             <h3 className="text-center italic mb-4 uppercase text-lg">更換登入頁面圖示</h3>
             <div className="flex flex-col items-center gap-4 mb-6">
@@ -1401,7 +1475,7 @@ function TripSelector({
         </div>
       )}
 
-      {/* 1. 成員名冊 USER ADMIN：補回刪除按鈕並置中 */}
+      {/* 1. 成員名冊 USER ADMIN */}
       {showUserAdmin && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black font-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1453,7 +1527,7 @@ function TripSelector({
         </div>
       )}
 
-      {/* 2. 編輯個人資料彈窗：修正垂直接中置中 (加入 my-auto 與 items-center) */}
+      {/* 2. 編輯個人資料彈窗 */}
       {editingMember && (
         <div className="fixed inset-0 bg-black/80 z-[130] p-4 flex items-center justify-center overflow-y-auto">
           <div className="bg-white w-full max-w-md max-h-[85vh] p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 my-auto">
@@ -1486,7 +1560,6 @@ function TripSelector({
     </div>
   );
 }
-
 // 3. 主應用程式 (MainApp)
 function MainApp({ 
   onBack, 
@@ -1512,7 +1585,7 @@ function MainApp({
   const [voucherSubTab, setVoucherSubTab] = useState<'未使用' | '已使用'>('未使用');
   const [expenseSubTab, setExpenseSubTab] = useState<'明細' | '查帳'>('明細');
   
-  const [filterPayerIds, setFilterPayerIds] = useState<string[]>([]);
+  const [filterPayerIds, setFilterPayerIds] = useState<string[]>([user.id]);
   const [filterDates, setFilterDates] = useState<string[]>([]);
 
   const currentMemberIds = tripData.memberIds || [user.id];
@@ -1536,13 +1609,25 @@ function MainApp({
   // 景點詳細資料彈窗 (Google Maps 風格 Bottom Sheet)
   const [viewingPlanDetail, setViewingPlanDetail] = useState<Plan | null>(null);
 
-  // 💥 準備清單詳細資料彈窗 (放大備註展示)
+  // 準備清單詳細資料彈窗 (放大備註展示、採購相片展示)
   const [viewingTodoDetail, setViewingTodoDetail] = useState<TodoItem | null>(null);
+
+  // 憑證詳細資訊彈窗 (點縮圖卡片開啟中型詳情，內有點擊全螢幕放大)
+  const [viewingVoucherDetail, setViewingVoucherDetail] = useState<BookingDoc | null>(null);
+
+  // 行李打包自訂新增項目狀態（依分類暫存輸入）
+  const [newPackingInputs, setNewPackingInputs] = useState<{ [cat: string]: string }>({});
+
+  // 行李分類摺疊狀態
+  const [collapsedPackingCats, setCollapsedPackingCats] = useState<{ [cat: string]: boolean }>({});
 
   const [editingVoucherModal, setEditingVoucherModal] = useState<BookingDoc | null>(null);
   const [editingExpenseModal, setEditingExpenseModal] = useState<ExpenseRecord | null>(null);
   const [editingJournalModal, setEditingJournalModal] = useState<JournalEntry | null>(null);
   const [editingTodoModal, setEditingTodoModal] = useState<TodoItem | null>(null);
+
+  // 多人分帳單人個別結清專屬彈窗管理狀態
+  const [managingSplitRecord, setManagingSplitRecord] = useState<ExpenseRecord | null>(null);
 
   const stateRef = useRef({ records, schedules, todos, journals, flights, bookings, cityConfigs });
   useEffect(() => {
@@ -1585,10 +1670,10 @@ function MainApp({
   const [category, setCategory] = useState('');
   const [expenseNote, setExpenseNote] = useState('');
   const [payMethod, setPayMethod] = useState(''); 
-  const [otherPayMethodNote, setOtherPayMethodNote] = useState(''); // 💥 付款方式為「其他」時的自訂填寫內容
+  const [otherPayMethodNote, setOtherPayMethodNote] = useState('');
   const [expensePayerId, setExpensePayerId] = useState(user.id);
 
-  // 記帳代墊獨立大彈窗 Modal 相關狀態
+  // 記帳代墊獨立大彈窗 Modal 相關狀態 (優先宣告，避免暫存死區)
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [isAdvanceConfigured, setIsAdvanceConfigured] = useState(false);
   const [advanceTargetType, setAdvanceTargetType] = useState<'member' | 'other'>('member');
@@ -1608,9 +1693,9 @@ function MainApp({
 
   const handleOpenAdvanceModal = () => {
     setTempAdvType(advanceTargetType);
-    setTempAdvMemberId(advanceMemberId || (otherTripMembers[0]?.id || ''));
-    setTempAdvOtherPerson(advanceOtherPerson);
-    setTempAdvOtherNote(advanceOtherNote);
+    setTempAdvMemberId(isAdvanceConfigured ? advanceMemberId : '');
+    setTempAdvOtherPerson(isAdvanceConfigured ? advanceOtherPerson : '');
+    setTempAdvOtherNote(isAdvanceConfigured ? advanceOtherNote : '');
     setShowAdvanceModal(true);
   };
 
@@ -1629,14 +1714,37 @@ function MainApp({
     }
     setAdvanceTargetType(tempAdvType);
     setIsAdvanceConfigured(true);
+    setIsSplitConfigured(false);
     setShowAdvanceModal(false);
+  };
+
+  // 多人分帳相關狀態
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [isSplitConfigured, setIsSplitConfigured] = useState(false);
+  const [splitMemberIds, setSplitMemberIds] = useState<string[]>(currentMemberIds);
+  const [tempSplitMemberIds, setTempSplitMemberIds] = useState<string[]>(currentMemberIds);
+  
+  const handleOpenSplitModal = () => {
+    setTempSplitMemberIds(isSplitConfigured ? splitMemberIds : currentMemberIds);
+    setShowSplitModal(true);
+  };
+
+  const handleSaveSplitModal = () => {
+    if (tempSplitMemberIds.length === 0) {
+      return alert("請至少選擇一位分帳成員！");
+    }
+    setSplitMemberIds(tempSplitMemberIds);
+    setIsSplitConfigured(true);
+    setIsAdvanceConfigured(false);
+    setShowSplitModal(false);
   };
 
   const [newJournalContent, setNewJournalContent] = useState('');
   const [newJournalImages, setNewJournalImages] = useState<string[]>([]);
   const [newJournalVideo, setNewJournalVideo] = useState('');
 
-  const [newTodoInput, setNewTodoInput] = useState({ task: '', note: '', assigneeIds: [user.id] as string[] });
+  // 待辦/採購新增輸入狀態
+  const [newTodoInput, setNewTodoInput] = useState({ task: '', note: '', image: '', assigneeIds: [user.id] as string[] });
 
   const [showPlanModal, setShowPlanModal] = useState<{show: boolean, type: 'add'|'edit', data?: Plan}>({show: false, type: 'add'});
   const [planForm, setPlanForm] = useState({ time: '09:00', title: '', desc: '', icon: '📍' });
@@ -1646,6 +1754,101 @@ function MainApp({
 
   const [showFlightModal, setShowFlightModal] = useState<{show: boolean, type: 'add'|'edit', data?: Flight | null}>({show: false, type: 'add', data: null});
   const [flightForm, setFlightForm] = useState<Flight>({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' });
+
+  // 行李清單初始化：若目前無行李項目，自動注入歷史/預設清單（未準備狀態）
+  const hasInitializedPackingRef = useRef(false);
+  useEffect(() => {
+    if (hasInitializedPackingRef.current) return;
+    const currentPackingItems = todos.filter(t => t.category === '行李');
+    if (currentPackingItems.length === 0) {
+      let savedHistoryItems: string[] = [];
+      try {
+        const historyJson = localStorage.getItem('dupi_user_packing_history_v26');
+        if (historyJson) {
+          savedHistoryItems = JSON.parse(historyJson);
+        }
+      } catch (e) {}
+
+      let itemsToInject: { task: string; note: string }[] = [];
+      if (savedHistoryItems && savedHistoryItems.length > 0) {
+        itemsToInject = savedHistoryItems.map(itemStr => {
+          const parts = itemStr.split('::');
+          return { task: parts[0] || itemStr, note: parts[1] || '生活日用' };
+        });
+      } else {
+        DEFAULT_PACKING_CATEGORIES.forEach(cat => {
+          cat.items.forEach(it => {
+            itemsToInject.push({ task: it, note: cat.category });
+          });
+        });
+      }
+
+      if (itemsToInject.length > 0) {
+        const generated: TodoItem[] = itemsToInject.map((it, idx) => ({
+          id: Date.now() + idx,
+          task: it.task,
+          note: it.note,
+          assigneeIds: currentMemberIds,
+          completedAssigneeIds: [],
+          category: '行李',
+          lastUpdatedById: user.id
+        }));
+
+        const updated = [...todos, ...generated];
+        setTodos(updated);
+        sync({ todos: updated });
+      }
+    }
+    hasInitializedPackingRef.current = true;
+  }, [todos, currentMemberIds, user.id]);
+
+  // 行李清單異動時，同步記憶至使用者個人偏好歷程
+  const savePackingHistory = (currentTodos: TodoItem[]) => {
+    const packing = currentTodos.filter(t => t.category === '行李');
+    if (packing.length > 0) {
+      const historyStrings = packing.map(p => `${p.task}::${p.note || '生活日用'}`);
+      localStorage.setItem('dupi_user_packing_history_v26', JSON.stringify(Array.from(new Set(historyStrings))));
+    }
+  };
+
+  // 彈窗背景鎖定
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(
+      viewingPlanDetail || 
+      viewingTodoDetail || 
+      viewingVoucherDetail ||
+      showAdvanceModal || 
+      showSplitModal || 
+      editingVoucherModal || 
+      editingExpenseModal || 
+      editingJournalModal || 
+      editingTodoModal || 
+      editingMemberModal || 
+      lightboxImg || 
+      showPlanModal.show || 
+      showFlightModal.show ||
+      managingSplitRecord
+    );
+    document.body.style.overflow = isAnyModalOpen ? 'hidden' : 'auto';
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [
+    viewingPlanDetail, 
+    viewingTodoDetail, 
+    viewingVoucherDetail,
+    showAdvanceModal, 
+    showSplitModal, 
+    editingVoucherModal, 
+    editingExpenseModal, 
+    editingJournalModal, 
+    editingTodoModal, 
+    editingMemberModal, 
+    lightboxImg, 
+    showPlanModal.show, 
+    showFlightModal.show,
+    managingSplitRecord
+  ]);
 
   const isWayne = (user.account || user.loginCode) === 'wayne';
 
@@ -1674,7 +1877,6 @@ function MainApp({
     fetchRates();
   }, []);
 
-  // 即時抓取天氣主函式（加強城市名稱容錯，相容「大阪市」轉「大阪」）
   const fetchWeatherForDay = async (dayNum: number, configs: CityWeatherConfig[]) => {
     const currentCityConfig = configs.find(c => c.dayIndexes.includes(dayNum));
     if (!currentCityConfig) {
@@ -1760,7 +1962,6 @@ function MainApp({
     fetchWeatherForDay(activeDay, cityConfigs);
   }, [activeDay, cityConfigs, tripData.startDate]);
 
-  // 1. 城市輸入即時自動搜尋推薦 (Debounce 300ms)
   useEffect(() => {
     if (!newCityName.trim()) {
       setCitySuggestions([]);
@@ -1785,7 +1986,6 @@ function MainApp({
     return () => clearTimeout(timer);
   }, [newCityName]);
 
-  // 2. 行程景點地標即時自動搜尋推薦 (Debounce 350ms)
   useEffect(() => {
     if (isSelectingPlaceRef.current) {
       isSelectingPlaceRef.current = false;
@@ -1885,7 +2085,6 @@ function MainApp({
     onUpdateTrip(updatedTrip);
   };
 
-  // 💥 1: 修正航班時間排序（依行程第幾天排序，確保先去後回）
   const sortedFlights = useMemo(() => {
     return [...flights].sort((a, b) => {
       const indexA = dynamicTripDates.indexOf(a.date);
@@ -1898,7 +2097,6 @@ function MainApp({
     });
   }, [flights, dynamicTripDates]);
 
-  // 純月日比對邏輯，徹底解決帶星期比對為 0 元的 Bug
   const pureTripDates = useMemo(() => {
     return dynamicTripDates.map(dStr => dStr.split(' ')[0]);
   }, [dynamicTripDates]);
@@ -1906,7 +2104,7 @@ function MainApp({
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       const matchPayer = filterPayerIds.length === 0 || filterPayerIds.includes(r.payerId);
-      const rPureDate = r.date.split(' ')[0]; // 取出如 "10/13"
+      const rPureDate = r.date.split(' ')[0];
       const matchDate = filterDates.length === 0 || filterDates.includes(rPureDate);
       return matchPayer && matchDate;
     });
@@ -1969,7 +2167,6 @@ function MainApp({
     return { totalTwd, categoryTotals, dateGroups, slices, memberBars };
   }, [filteredRecords, dynamicTripDates]);
 
-  // 結清代墊款處理函式
   const handleSettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -2008,7 +2205,6 @@ function MainApp({
     }
   };
 
-  // 退回結清款項 (恢復為未結清狀態)
   const handleUnsettleAdvance = (recordId: number) => {
     const target = records.find(r => r.id === recordId);
     if (!target) return;
@@ -2146,7 +2342,7 @@ function MainApp({
       <div className="px-4 mt-4">
         {activeTab === '行程' && (
           <div className="animate-in fade-in">
-            {/* 頂部天氣卡片：使用 location.href 移除手機空白分頁 */}
+            {/* 頂部天氣卡片 */}
             <div className="bg-[#5E9E8E] rounded-[32px] p-6 text-white mb-6 shadow-lg relative overflow-hidden transition-all">
                 <button 
                   onClick={() => setShowCityEditor(!showCityEditor)}
@@ -2208,7 +2404,7 @@ function MainApp({
                       placeholder="輸入城市 (如: 台北、大阪)..." 
                       value={newCityName} 
                       onChange={e => setNewCityName(e.target.value)} 
-                      className="p-2 px-3 bg-gray-50 rounded-xl text-xs outline-none border border-gray-200 font-black text-black placeholder:text-gray-400"
+                      className="p-2 px-3 bg-gray-50 rounded-xl text-xs outline-none border border-gray-200 font-black text-black placeholder:text-gray-400" 
                     />
                     <button 
                       onClick={() => {
@@ -2225,7 +2421,6 @@ function MainApp({
                       + 新增
                     </button>
 
-                    {/* 城市自動搜尋下拉推薦選單 */}
                     {citySuggestions.length > 0 && (
                       <div className="absolute top-11 left-0 right-14 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                         {citySuggestions.map((cityName, idx) => (
@@ -2335,7 +2530,6 @@ function MainApp({
                             <div className="w-4 h-4 rounded-full bg-white border-4 border-[#86A760] z-10 mt-1 shadow-sm"></div>
                             <span className="text-[10px] text-gray-500 mt-2 font-mono font-black">{item.time}</span>
                         </div>
-                        {/* 點擊白色區域直接開啟 Google Maps 風格的景點詳細資訊視窗 */}
                         <div 
                           onClick={() => setViewingPlanDetail(item)}
                           className="flex-1 bg-white p-5 rounded-[24px] shadow-sm border border-orange-50 relative group cursor-pointer hover:shadow-md active:scale-98 transition-all"
@@ -2350,6 +2544,7 @@ function MainApp({
                             </div>
                             <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-black line-clamp-2">{item.desc}</p>
                             <div className="mt-4 flex justify-between items-center">
+                                {/* 外部連結跳轉：使用 window.location.href 直接導向，避免產生空白標籤頁 */}
                                 <button 
                                   onClick={(e) => { 
                                     e.stopPropagation(); 
@@ -2372,7 +2567,7 @@ function MainApp({
           </div>
         )}
 
-        {/* 💥 3: 行程詳細資訊彈窗優化（移除編輯按鈕、備註文字顯著放大排版） */}
+        {/* 行程詳細資訊彈窗 */}
         {viewingPlanDetail && (
           <div 
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 font-black"
@@ -2412,7 +2607,7 @@ function MainApp({
                 </button>
               </div>
 
-              {/* 雙快捷鍵：地圖導航 & 評價搜尋 */}
+              {/* 外部連結跳轉：使用 window.location.href 直接導向，iOS 自動喚起 App 不留空白頁 */}
               <div className="grid grid-cols-2 gap-3 mb-5 shrink-0">
                 <button
                   type="button"
@@ -2437,7 +2632,6 @@ function MainApp({
                 </button>
               </div>
 
-              {/* 備註與說明區塊：字體與行距放大優化 */}
               <div className="bg-gray-50 rounded-3xl p-5 border border-gray-100 overflow-y-auto flex-1 mb-5">
                 <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">備註與詳細說明</p>
                 {viewingPlanDetail.desc ? (
@@ -2462,92 +2656,7 @@ function MainApp({
           </div>
         )}
 
-        {/* 💥 4: 準備清單詳細備註彈窗 */}
-        {viewingTodoDetail && (
-          <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 font-black"
-            onClick={() => setViewingTodoDetail(null)}
-          >
-            <div 
-              className="bg-white w-full max-w-lg rounded-t-[40px] sm:rounded-[40px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto text-black flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden shrink-0" />
-
-              <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100 shrink-0">
-                <div className="flex items-center gap-3 overflow-hidden pr-2">
-                  <span className="text-2xl shrink-0 p-2.5 bg-[#F9F8F3] rounded-2xl border border-gray-200">
-                    {viewingTodoDetail.category === '待辦' ? '💼' : viewingTodoDetail.category === '行李' ? '🧳' : '🛍️'}
-                  </span>
-                  <div className="overflow-hidden">
-                    <h3 className="text-lg font-black text-black truncate">{viewingTodoDetail.task}</h3>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-mono">
-                        {viewingTodoDetail.category}
-                      </span>
-                      {viewingTodoDetail.lastUpdatedById && (
-                        <span className="text-[9px] text-gray-400">
-                          最後編輯: {getMember(viewingTodoDetail.lastUpdatedById).name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <button 
-                  type="button" 
-                  onClick={() => setViewingTodoDetail(null)} 
-                  className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black shrink-0 transition-colors"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* 指派人員與勾選狀態 */}
-              <div className="mb-4 shrink-0">
-                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">指派成員與進度</p>
-                <div className="flex gap-2 flex-wrap">
-                  {viewingTodoDetail.assigneeIds.map(id => {
-                    const m = getMember(id);
-                    const isDone = viewingTodoDetail.completedAssigneeIds.includes(id);
-                    return (
-                      <span 
-                        key={id} 
-                        className={`text-xs px-3 py-1.5 rounded-full font-black flex items-center gap-1.5 ${isDone ? 'bg-green-600 text-white shadow-xs' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}
-                      >
-                        <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
-                        <span>{m.name}</span>
-                        <span>{isDone ? '✅ 已完成' : '⏳ 待處理'}</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 備註與說明區塊 */}
-              <div className="bg-gray-50 rounded-3xl p-5 border border-gray-100 overflow-y-auto flex-1 mb-5">
-                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">備註與詳細說明</p>
-                {viewingTodoDetail.note ? (
-                  <p className="text-base text-gray-800 leading-relaxed font-normal whitespace-pre-wrap">
-                    {viewingTodoDetail.note}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 italic font-normal py-4 text-center">
-                    目前尚未填寫詳細備註～
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setViewingTodoDetail(null)}
-                className="w-full py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform shrink-0"
-              >
-                關閉
-              </button>
-            </div>
-          </div>
-        )}
-
+        {/* --- [Tab: 預訂] --- */}
         {activeTab === '預訂' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
@@ -2628,92 +2737,66 @@ function MainApp({
                     <p>{voucherSubTab === '未使用' ? '目前沒有未使用的憑證' : '目前沒有已使用的憑證'}</p>
                   </div>
                 ) : (
-                  bookings
-                    .filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used')
-                    .map(b => (
-                      <div key={b.id} className="bg-white p-6 rounded-[32px] shadow-xl border border-gray-50 group relative font-black">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="text-xs italic bg-orange-50 text-orange-900 px-3 py-1 rounded-full font-black">🎫 {b.title}</h4>
-                          <div className="flex gap-2 items-center">
-                            <button onClick={() => setEditingVoucherModal(b)} className="text-blue-500 text-xs font-black p-1 hover:underline">🖋️ 編輯</button>
-                            <button onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} className="text-red-300 text-xs font-black p-1">✕</button>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-center mb-3">
-                          <p className="text-[9px] text-gray-400 font-black">最後編輯: {getMember(b.lastUpdatedById).name}</p>
-                          {b.status === 'used' && (
-                            <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-black">
-                              ✅ 已由 {b.usedByMemberName || '未知成員'} 於 {b.usedAt || '剛剛'} 使用
-                            </span>
-                          )}
-                        </div>
-
-                        {b.image && (
-                          <div className="w-full max-h-[600px] overflow-y-auto bg-gray-50 rounded-[24px] p-2 my-3 border border-gray-100">
-                            <div 
-                              onClick={() => setLightboxImg(b.image!)}
-                              className="w-full flex justify-center cursor-pointer hover:opacity-95 transition-opacity relative group"
-                              title="點擊放大圖片"
-                            >
-                              <img src={b.image} className="w-full object-contain rounded-[20px] shadow-sm" alt="voucher" />
-                              <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-[20px]">
-                                🔍 點擊放大
+                  <div className="space-y-3">
+                    {bookings
+                      .filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used')
+                      .map(b => (
+                        <div 
+                          key={b.id} 
+                          onClick={() => setViewingVoucherDetail(b)}
+                          className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 cursor-pointer hover:shadow-md active:scale-98 transition-all font-black group"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden flex-1">
+                            {b.image ? (
+                              <img 
+                                src={b.image} 
+                                className="w-14 h-14 rounded-2xl object-cover shrink-0 border border-gray-100 shadow-xs" 
+                                alt={b.title} 
+                              />
+                            ) : (
+                              <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 border border-orange-100">
+                                🎫
+                              </div>
+                            )}
+                            <div className="overflow-hidden flex-1">
+                              <h4 className="text-sm font-black text-black truncate">{b.title}</h4>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-black ${b.status === 'used' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                  {b.status === 'used' ? '已使用' : '未使用'}
+                                </span>
+                                <span className="text-[9px] text-gray-400 font-mono truncate">
+                                  {getMember(b.lastUpdatedById).name}
+                                </span>
                               </div>
                             </div>
                           </div>
-                        )}
 
-                        {voucherSubTab === '未使用' ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`確定要將憑證「${b.title}」標記為已使用嗎？`)) {
-                                const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                const next = bookings.map(item => item.id === b.id ? {
-                                  ...item,
-                                  status: 'used' as const,
-                                  usedByMemberName: user.name,
-                                  usedAt: nowStr,
-                                  lastUpdatedById: user.id
-                                } : item);
-                                setBookings(next);
-                                sync({ bookings: next });
-                              }
-                            }}
-                            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform"
-                          >
-                            ✓ 標記為已使用
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`確定要將憑證「${b.title}」改回未使用的狀態嗎？`)) {
-                                const next = bookings.map(item => item.id === b.id ? {
-                                  ...item,
-                                  status: 'unused' as const,
-                                  usedByMemberName: undefined,
-                                  usedAt: undefined,
-                                  lastUpdatedById: user.id
-                                } : item);
-                                setBookings(next);
-                                sync({ bookings: next });
-                              }
-                            }}
-                            className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-2xl text-xs font-black active:scale-98 transition-transform"
-                          >
-                            ↺ 取消使用 (退回未使用)
-                          </button>
-                        )}
-                      </div>
-                    ))
+                          <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                            <button 
+                              type="button" 
+                              onClick={() => setEditingVoucherModal(b)} 
+                              className="text-blue-500 text-xs font-black p-1.5 hover:bg-blue-50 rounded-lg"
+                              title="編輯憑證"
+                            >
+                              🖋️
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} 
+                              className="text-red-400 text-xs font-black p-1.5 hover:bg-red-50 rounded-lg"
+                              title="刪除憑證"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
                 )}
               </div>
             )}
           </div>
         )}
-
         {/* --- [Tab: 記帳] --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
@@ -2764,7 +2847,7 @@ function MainApp({
                       className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-[#5E9E8E] font-black text-lg border border-gray-200 mb-4 placeholder:text-gray-400" 
                     />
                     
-                    {/* 💥 2: 付款方式新增「其他」，點選後即時滑出備註說明輸入框 */}
+                    {/* 付款方式 */}
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-[10px] text-gray-500 ml-2 font-black">PAY METHOD (付款方式 - 必填)</p>
                       {!payMethod && <span className="text-[9px] text-rose-500 font-bold">請點選一種付款方式</span>}
@@ -2785,7 +2868,6 @@ function MainApp({
                       ))}
                     </div>
 
-                    {/* 付款方式為「其他」時滑出說明輸入框 */}
                     {payMethod === '其他' && (
                       <div className="mb-4 animate-in slide-in-from-top-2 duration-150">
                         <input
@@ -2798,55 +2880,57 @@ function MainApp({
                       </div>
                     )}
 
-<p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
-<div className="flex flex-wrap gap-2 mb-4">
-  {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
-    <button 
-      key={m.id} 
-      type="button"
-      onClick={()=>setExpensePayerId(m.id)} 
-      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 whitespace-nowrap ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}
-    >
-      <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
-      <span>{m.name}</span>
-    </button>
-  ))}
-</div>
+                    <p className="text-[10px] text-gray-500 mb-2 ml-2 font-black">PAYER (先付款人)</p>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
+                        <button 
+                          key={m.id} 
+                          type="button"
+                          onClick={()=>setExpensePayerId(m.id)} 
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 whitespace-nowrap ${expensePayerId===m.id?'bg-blue-500 text-white shadow-md':'bg-gray-100 text-gray-500'}`}
+                        >
+                          <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                          <span>{m.name}</span>
+                        </button>
+                      ))}
+                    </div>
 
-                    {/* 代墊設定按鈕 */}
-                    <div className="mb-6">
+                    {/* 代墊與分帳雙並排按鈕區塊 */}
+                    <div className="grid grid-cols-2 gap-3 mb-6 font-black">
                       <button
                         type="button"
                         onClick={handleOpenAdvanceModal}
-                        className={`w-full p-3.5 rounded-2xl flex items-center justify-between transition-all border font-black active:scale-98 ${
+                        className={`p-3.5 rounded-2xl flex items-center justify-center gap-1.5 transition-all border font-black active:scale-98 truncate ${
                           isAdvanceConfigured
                             ? 'bg-amber-500 text-white border-amber-600 shadow-md'
                             : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-gray-200'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-lg">🤝</span>
-                          <span className="text-xs">
-                            {isAdvanceConfigured
-                              ? advanceTargetType === 'member'
-                                ? `已設定代墊：幫 ${getMember(advanceMemberId).name}`
-                                : `已設定代墊：幫 ${advanceOtherPerson}${advanceOtherNote ? ` (${advanceOtherNote})` : ''}`
-                              : '幫人代墊（點擊開啟大視窗設定）'}
-                          </span>
-                        </div>
-                        {isAdvanceConfigured ? (
-                          <span 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsAdvanceConfigured(false);
-                            }}
-                            className="bg-black/20 hover:bg-black/40 text-white text-[10px] px-2.5 py-1 rounded-lg"
-                          >
-                            ✕ 取消代墊
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">＋ 設定</span>
-                        )}
+                        <span className="text-base shrink-0">🤝</span>
+                        <span className="text-xs truncate">
+                          {isAdvanceConfigured
+                            ? advanceTargetType === 'member'
+                              ? `代墊：${getMember(advanceMemberId).name}`
+                              : `代墊：${advanceOtherPerson}`
+                            : '幫人代墊'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenSplitModal}
+                        className={`p-3.5 rounded-2xl flex items-center justify-center gap-1.5 transition-all border font-black active:scale-98 truncate ${
+                          isSplitConfigured
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-md'
+                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-gray-200'
+                        }`}
+                      >
+                        <span className="text-base shrink-0">📊</span>
+                        <span className="text-xs truncate">
+                          {isSplitConfigured
+                            ? `分帳：${splitMemberIds.length}人均分`
+                            : '多人分帳'}
+                        </span>
                       </button>
                     </div>
 
@@ -2859,12 +2943,12 @@ function MainApp({
                         const twdVal = (Number(amount) * exchangeRates[currency]).toFixed(0);
                         const autoTimestamp = getNowTimestampString();
 
-                        // 組合付款方式字串（若有自訂其他備註則帶入）
                         const finalPayMethod = payMethod === '其他' && otherPayMethodNote.trim()
                           ? `其他 (${otherPayMethodNote.trim()})`
                           : payMethod;
 
                         const rec: ExpenseRecord = {
+                          isSplitSettled: false,
                           id: Date.now(), 
                           category: category.trim(), 
                           amount, 
@@ -2876,6 +2960,9 @@ function MainApp({
                           note: expenseNote.trim(),
                           lastUpdatedById: user.id,
                           isAdvance: isAdvanceConfigured,
+                          isSplit: isSplitConfigured,
+                          splitMemberIds: isSplitConfigured ? splitMemberIds : undefined,
+                          splitSettledMemberIds: [], // 預設無人個別結清
                           advanceTargetType: isAdvanceConfigured ? advanceTargetType : undefined,
                           advanceMemberId: isAdvanceConfigured && advanceTargetType === 'member' ? advanceMemberId : undefined,
                           advanceOtherPerson: isAdvanceConfigured && advanceTargetType === 'other' ? advanceOtherPerson : undefined,
@@ -2894,10 +2981,11 @@ function MainApp({
                         setPayMethod('');
                         setOtherPayMethodNote('');
                         setIsAdvanceConfigured(false);
+                        setIsSplitConfigured(false);
                     }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg uppercase italic active:scale-95 transition-transform">SAVE EXPENSE</button>
                 </div>
 
-                {/* 記帳下面明細只顯示代墊項目 */}
+                {/* 🤝 代墊款項明細專區 */}
                 <div className="space-y-3 font-black">
                     <div className="flex justify-between items-center px-1 mb-1">
                       <span className="text-xs text-[#5E9E8E] uppercase tracking-wider">🤝 代墊款項明細專區</span>
@@ -2911,7 +2999,6 @@ function MainApp({
                     ) : (
                       records.filter(r => r.isAdvance).map(r => {
                         const isSettledOther = r.isAdvance && r.advanceTargetType === 'other' && r.isSettled;
-                        // 權限限制：只有先掏錢的付款人本人，或管理員 Wayne 可以結清／退回
                         const canOperateAdvance = (user.id === (r.originalPayerId || r.payerId)) || isWayne;
 
                         return (
@@ -2939,7 +3026,6 @@ function MainApp({
                                       {r.payMethod} · {getMember(r.payerId).name} (最後編輯: {getMember(r.lastUpdatedById).name})
                                     </p>
 
-                                    {/* 結清與退回按鈕加大，且限制本人操作 */}
                                     <div className="mt-2.5">
                                       {canOperateAdvance ? (
                                         !r.isSettled ? (
@@ -2981,7 +3067,83 @@ function MainApp({
                       })
                     )}
                 </div>
+
+                {/* 📊 多人分帳結清明細專區 */}
+                <div className="space-y-3 font-black mt-6">
+                    <div className="flex justify-between items-center px-1 mb-1">
+                      <span className="text-xs text-emerald-700 uppercase tracking-wider">📊 多人分帳結清明細專區</span>
+                      <span className="text-[10px] text-gray-400">支援點選彈窗個別標記成員結清</span>
+                    </div>
+
+                    {records.filter(r => r.isSplit).length === 0 ? (
+                      <div className="bg-white p-6 rounded-2xl text-center text-xs text-gray-400 border border-gray-100 shadow-sm">
+                        目前尚無多人分帳紀錄！
+                      </div>
+                    ) : (
+                      records.filter(r => r.isSplit).map(r => {
+                        const targetSplitIds = r.splitMemberIds && r.splitMemberIds.length > 0 ? r.splitMemberIds : currentMemberIds;
+                        const settledIds = r.splitSettledMemberIds || [];
+                        // 扣除付款人自己，其他人需要給錢
+                        const debtors = targetSplitIds.filter(id => id !== r.payerId);
+                        const unsettledCount = debtors.filter(id => !settledIds.includes(id)).length;
+                        const isAllSettled = r.isSplitSettled || (debtors.length > 0 && unsettledCount === 0);
+
+                        return (
+                          <div key={r.id} className="bg-white p-5 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 pr-16 relative group">
+                              <div className="flex items-center gap-3">
+                                  <img src={getMember(r.payerId).avatar} className="w-6 h-6 rounded-full shadow-sm object-cover" />
+                                  <div className="text-xs font-black">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span>{r.category}</span>
+                                      <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono">{r.date}</span>
+                                      
+                                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${isAllSettled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                        {isAllSettled ? '✅ 全員已結清' : `⏳ 尚有 ${unsettledCount} 人未結清`}
+                                      </span>
+                                    </div>
+
+                                    {r.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5">💬 {r.note}</p>}
+                                    <p className="text-[8px] text-gray-400 font-mono italic mt-0.5">
+                                      {r.payMethod} · 付款人: {getMember(r.payerId).name} (共 {targetSplitIds.length} 人分攤)
+                                    </p>
+
+                                    {/* 點擊開啟單人獨立結清管理彈窗 */}
+                                    <div className="mt-2.5">
+                                      {!isAllSettled ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setManagingSplitRecord(r)}
+                                          className="text-xs bg-amber-500 hover:bg-amber-600 text-white font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                        >
+                                          <span>⏳ 尚有 {unsettledCount} 人未付清（點擊查看）</span>
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setManagingSplitRecord(r)}
+                                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                        >
+                                          <span>✅ 全員已結清（點擊查看明細）</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                              </div>
+                              <div className="text-right text-[#5E9E8E] font-mono tracking-tighter font-black">
+                                <span>{r.amount} {r.currency || 'JPY'}</span>
+                                <p className="text-[9px] text-gray-400 font-black">≈ NT$ {r.twdAmount}</p>
+                              </div>
+                              <div className="absolute right-4 flex flex-col gap-2">
+                                <button onClick={()=>setEditingExpenseModal(r)} className="text-blue-400 text-[10px] hover:underline">🖋️</button>
+                                <button onClick={()=>{if(confirm('確定刪除此記帳記錄？')){const n=records.filter(i=>i.id!==r.id); setRecords(n); sync({records:n});}}} className="text-red-400 text-sm">✕</button>
+                              </div>
+                          </div>
+                        );
+                      })
+                    )}
+                </div>
               </>
+
             ) : (
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
@@ -3013,7 +3175,6 @@ function MainApp({
                     </div>
                   </div>
 
-                  {/* 日期篩選使用 pureDate (如 10/13)，與記帳日期完全吻合 */}
                   <div className="mb-6 pt-3 border-t border-gray-100">
                     <h4 className="text-xs text-[#5E9E8E] uppercase tracking-wider mb-2">📅 行程日期篩選 (可單選或多選)</h4>
                     <div className="flex flex-wrap gap-2">
@@ -3024,7 +3185,7 @@ function MainApp({
                         全部日期
                       </button>
                       {dynamicTripDates.map(dStr => {
-                        const pureD = dStr.split(' ')[0]; // 取出 "10/13"
+                        const pureD = dStr.split(' ')[0];
                         const isDateSel = filterDates.includes(pureD);
                         return (
                           <button
@@ -3523,84 +3684,321 @@ function MainApp({
                 ))}
             </div>
 
-            <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
-                <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput,task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
-                <textarea 
-                 rows={3}
-                 value={newTodoInput.note} 
-                 onChange={e=>setNewTodoInput({...newTodoInput, note: e.target.value})} 
-                 placeholder={`備註或詳細說明 (選填，支援換行)...`} 
-                 className="w-full p-3 bg-gray-50 rounded-xl mb-4 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200 leading-relaxed resize-none" 
-                 />
-                
-                <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
-<div className="flex flex-wrap gap-2 mb-6">
-    {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
-        <button 
-          key={m.id} 
-          type="button"
-          onClick={()=>{
-            const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
-            setNewTodoInput({...newTodoInput, assigneeIds: ids});
-          }} 
-          className={`p-2 px-3.5 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-sm':'bg-gray-100 text-gray-500 border-gray-200'}`}
-        >
-          <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
-          <span>{m.name}</span>
-        </button>
-    ))}
-</div>
-                <button onClick={()=>{
-                    if(!newTodoInput.task.trim()) return alert("請輸入事項名稱！");
-                    if(newTodoInput.assigneeIds.length === 0) return alert("請至少選擇一位指派人員！");
+            {/* 「待辦」與「採購」保留常規自訂新增面板 */}
+            {prepSubTab !== '行李' && (
+              <div className="bg-white rounded-[32px] p-6 shadow-sm border border-orange-50 mb-8 font-black">
+                  <input value={newTodoInput.task} onChange={e=>setNewTodoInput({...newTodoInput, task:e.target.value})} placeholder={`新增事項 (${prepSubTab})...`} className="w-full p-4 bg-gray-50 rounded-2xl mb-3 outline-none font-black text-black placeholder:text-gray-400 border border-gray-200" />
+                  <textarea 
+                   rows={3}
+                   value={newTodoInput.note} 
+                   onChange={e=>setNewTodoInput({...newTodoInput, note: e.target.value})} 
+                   placeholder={`備註或詳細說明 (選填，支援換行)...`} 
+                   className="w-full p-3 bg-gray-50 rounded-xl mb-3 text-xs outline-none font-black text-black placeholder:text-gray-400 border border-gray-200 leading-relaxed resize-none" 
+                   />
 
-                    const newItem: TodoItem = { id: Date.now(), task: newTodoInput.task.trim(), note: newTodoInput.note.trim(), assigneeIds: newTodoInput.assigneeIds, completedAssigneeIds: [], category: prepSubTab, lastUpdatedById: user.id };
-                    const n = [newItem, ...todos];
-                    setTodos(n); sync({todos:n}); setNewTodoInput({task:'', note:'', assigneeIds:[user.id]});
-                }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">ADD ITEM</button>
-            </div>
-
-            <div className="space-y-4">
-                {todos.filter(t=>t.category===prepSubTab).map(todo => (
-                    /* 💥 4: 點擊卡片空白處彈出詳細備註大字彈窗 */
-                    <div 
-                      key={todo.id} 
-                      onClick={() => setViewingTodoDetail(todo)}
-                      className="bg-white p-6 rounded-[28px] shadow-md border border-gray-100 flex justify-between items-center group font-black cursor-pointer hover:shadow-lg active:scale-98 transition-all"
-                    >
-                        <div className="flex flex-col flex-1 pr-4">
-                            <h4 className={`text-sm font-black transition-all ${todo.completedAssigneeIds.length === todo.assigneeIds.length ? 'line-through opacity-30 text-gray-400' : 'text-black'}`}>{todo.task}</h4>
-                            {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5 whitespace-pre-wrap leading-relaxed">💬 {todo.note}</p>}
-                            <p className="text-[9px] text-gray-400 mt-1">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
-                            <div className="flex gap-2 mt-2 flex-wrap" onClick={e => e.stopPropagation()}>
-                                {todo.assigneeIds.map(id => {
-                                    const m = getMember(id);
-                                    const isDone = todo.completedAssigneeIds.includes(id);
-                                    return (
-                                        <button key={id} onClick={() => {
-                                            const question = isDone ? `取消 ${m.name} 的完成狀態？` : `標記 ${m.name} 已完成？`;
-                                            if(!confirm(question)) return;
-                                            const nComp = isDone ? todo.completedAssigneeIds.filter(cid=>cid!==id) : [...todo.completedAssigneeIds, id];
-                                            const n = todos.map(t=>t.id===todo.id ? {...t, completedAssigneeIds: nComp, lastUpdatedById: user.id} : t);
-                                            setTodos(n); sync({todos:n});
-                                        }} className={`text-[8px] px-3 py-1.5 rounded-full font-black shadow-sm transition-all flex items-center gap-1 ${isDone ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                                          <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
-                                          {m?.name} {isDone && "✅"}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                  {/* 採購項目專屬：上傳商品參考照片 */}
+                  {prepSubTab === '採購' && (
+                    <div className="mb-4 bg-gray-50 p-3 rounded-2xl border border-gray-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {newTodoInput.image ? (
+                          <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-emerald-300">
+                            <img src={newTodoInput.image} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setNewTodoInput({ ...newTodoInput, image: '' })}
+                              className="absolute -top-1 -right-1 bg-red-500 text-white w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-gray-200 flex items-center justify-center text-xl text-gray-400">
+                            🛍️
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-black text-black">商品參考相片 (選填)</p>
+                          <p className="text-[9px] text-gray-400 font-normal">方便買東西時對照包裝或款式</p>
                         </div>
-                        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
-                            <button onClick={()=>setEditingTodoModal(todo)} className="text-blue-300 text-lg active:text-blue-500">🖋️</button>
-                            <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-300 text-lg active:text-red-500">✕</button>
-                        </div>
+                      </div>
+                      <ImageUploader 
+                        label={newTodoInput.image ? "更換相片" : "上傳相片"} 
+                        maxDimension={1000} 
+                        onUpload={(b64) => setNewTodoInput({ ...newTodoInput, image: b64 })} 
+                      />
                     </div>
-                ))}
-            </div>
+                  )}
+                  
+                  <p className="text-[10px] text-gray-500 mb-2 ml-1 font-black">指派人員 (預選自己，可點選切換或複選)</p>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                      {allMembers.filter(m=>currentMemberIds.includes(m.id)).map(m=>(
+                          <button 
+                            key={m.id} 
+                            type="button"
+                            onClick={()=>{
+                              const ids = newTodoInput.assigneeIds.includes(m.id) ? newTodoInput.assigneeIds.filter(i=>i!==m.id) : [...newTodoInput.assigneeIds, m.id];
+                              setNewTodoInput({...newTodoInput, assigneeIds: ids});
+                            }} 
+                            className={`p-2 px-3.5 rounded-xl border text-[10px] font-black transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${newTodoInput.assigneeIds.includes(m.id)?'bg-green-700 text-white shadow-sm':'bg-gray-100 text-gray-500 border-gray-200'}`}
+                          >
+                            <img src={m.avatar} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                            <span>{m.name}</span>
+                          </button>
+                      ))}
+                  </div>
+                  <button onClick={()=>{
+                      if(!newTodoInput.task.trim()) return alert("請輸入事項名稱！");
+                      if(newTodoInput.assigneeIds.length === 0) return alert("請至少選擇一位指派人員！");
+
+                      const newItem: TodoItem = { 
+                        id: Date.now(), 
+                        task: newTodoInput.task.trim(), 
+                        note: newTodoInput.note.trim(), 
+                        image: newTodoInput.image || undefined,
+                        assigneeIds: newTodoInput.assigneeIds, 
+                        completedAssigneeIds: [], 
+                        category: prepSubTab, 
+                        lastUpdatedById: user.id 
+                      };
+                      const n = [newItem, ...todos];
+                      setTodos(n); sync({todos:n}); setNewTodoInput({task:'', note:'', image:'', assigneeIds:[user.id]});
+                  }} className="w-full py-4 bg-[#86A760] text-white rounded-2xl font-black shadow-lg italic">ADD ITEM</button>
+              </div>
+            )}
+            {/* 行李清單專屬：分類摺疊清單介面（高密度、可收合、好勾選） */}
+            {prepSubTab === '行李' ? (
+              <div className="space-y-4">
+                {DEFAULT_PACKING_CATEGORIES.map(catGroup => {
+                  const catItems = todos.filter(t => t.category === '行李' && (t.note || '生活日用') === catGroup.category);
+                  const myCompletedCount = catItems.filter(t => t.completedAssigneeIds.includes(user.id)).length;
+                  const isCollapsed = !!collapsedPackingCats[catGroup.category];
+
+                  return (
+                    <div key={catGroup.category} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 font-black">
+                      {/* 分類標題列（點擊可展開/收合） */}
+                      <div 
+                        onClick={() => setCollapsedPackingCats(prev => ({ ...prev, [catGroup.category]: !prev[catGroup.category] }))}
+                        className="flex justify-between items-center cursor-pointer select-none pb-2 border-b border-gray-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl p-2 bg-[#F9F8F3] rounded-2xl border border-gray-100">{catGroup.icon}</span>
+                          <div>
+                            <h4 className="text-sm font-black text-black">{catGroup.category}</h4>
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              已備妥 ({myCompletedCount}/{catItems.length})
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-2.5 py-1 rounded-full font-black ${myCompletedCount === catItems.length && catItems.length > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                            {myCompletedCount === catItems.length && catItems.length > 0 ? '✅ 全數就緒' : '整理中'}
+                          </span>
+                          <span className="text-gray-400 text-sm">{isCollapsed ? '▼' : '▲'}</span>
+                        </div>
+                      </div>
+
+                      {/* 展開後的項目清單 */}
+                      {!isCollapsed && (
+                        <div className="mt-3 space-y-2">
+                          {catItems.length === 0 && (
+                            <p className="text-xs text-gray-300 text-center py-3">此分類尚無清單項目</p>
+                          )}
+                          {catItems.map(item => {
+                            const isDone = item.completedAssigneeIds.includes(user.id);
+                            return (
+                              <div 
+                                key={item.id}
+                                className={`flex items-center justify-between p-2.5 px-3 rounded-2xl border transition-all ${
+                                  isDone ? 'bg-emerald-50/50 border-emerald-100 text-gray-400' : 'bg-gray-50 border-gray-100 text-black'
+                                }`}
+                              >
+                                <div 
+                                  onClick={() => {
+                                    const nextCompleted = isDone 
+                                      ? item.completedAssigneeIds.filter(id => id !== user.id) 
+                                      : [...item.completedAssigneeIds, user.id];
+                                    const next = todos.map(t => t.id === item.id ? { ...t, completedAssigneeIds: nextCompleted, lastUpdatedById: user.id } : t);
+                                    setTodos(next);
+                                    sync({ todos: next });
+                                    savePackingHistory(next);
+                                  }}
+                                  className="flex items-center gap-2.5 flex-1 cursor-pointer overflow-hidden pr-2"
+                                >
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                                    isDone ? 'bg-[#86A760] border-[#86A760] text-white text-[11px]' : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {isDone && '✓'}
+                                  </div>
+                                  <span className={`text-xs font-black truncate ${isDone ? 'line-through opacity-60' : ''}`}>
+                                    {item.task}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {/* 已完成者的即時頭像列表 */}
+                                  <div className="flex -space-x-1.5 overflow-hidden">
+                                    {item.completedAssigneeIds.map(cId => (
+                                      <img 
+                                        key={cId}
+                                        src={getMember(cId).avatar} 
+                                        title={`${getMember(cId).name} 已打包`}
+                                        className="w-5 h-5 rounded-full border border-white object-cover shadow-xs" 
+                                      />
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`確定移除行李項目「${item.task}」？`)) {
+                                        const next = todos.filter(t => t.id !== item.id);
+                                        setTodos(next);
+                                        sync({ todos: next });
+                                        savePackingHistory(next);
+                                      }
+                                    }}
+                                    className="text-gray-300 hover:text-red-500 text-xs p-1"
+                                    title="刪除項目"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* 分類下方直接新增項目列 */}
+                          <div className="flex items-center gap-2 pt-2">
+                            <input
+                              type="text"
+                              value={newPackingInputs[catGroup.category] || ''}
+                              onChange={e => setNewPackingInputs({ ...newPackingInputs, [catGroup.category]: e.target.value })}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const text = (newPackingInputs[catGroup.category] || '').trim();
+                                  if (!text) return;
+                                  const newItem: TodoItem = {
+                                    id: Date.now(),
+                                    task: text,
+                                    note: catGroup.category,
+                                    assigneeIds: currentMemberIds,
+                                    completedAssigneeIds: [],
+                                    category: '行李',
+                                    lastUpdatedById: user.id
+                                  };
+                                  const next = [...todos, newItem];
+                                  setTodos(next);
+                                  sync({ todos: next });
+                                  savePackingHistory(next);
+                                  setNewPackingInputs({ ...newPackingInputs, [catGroup.category]: '' });
+                                }
+                              }}
+                              placeholder={`+ 新增${catGroup.category}物品...`}
+                              className="flex-1 p-2.5 px-3.5 bg-gray-50 rounded-xl text-xs outline-none border border-gray-200 font-black text-black placeholder:text-gray-400"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const text = (newPackingInputs[catGroup.category] || '').trim();
+                                if (!text) return alert("請輸入物品名稱！");
+                                const newItem: TodoItem = {
+                                  id: Date.now(),
+                                  task: text,
+                                  note: catGroup.category,
+                                  assigneeIds: currentMemberIds,
+                                  completedAssigneeIds: [],
+                                  category: '行李',
+                                  lastUpdatedById: user.id
+                                };
+                                const next = [...todos, newItem];
+                                setTodos(next);
+                                sync({ todos: next });
+                                savePackingHistory(next);
+                                setNewPackingInputs({ ...newPackingInputs, [catGroup.category]: '' });
+                              }}
+                              className="bg-[#86A760] text-white text-[11px] px-3.5 py-2.5 rounded-xl font-black shadow-xs active:scale-95"
+                            >
+                              加入
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* 待辦與採購清單列表 */
+              <div className="space-y-4">
+                  {todos.filter(t => t.category === prepSubTab).map(todo => (
+                      <div 
+                        key={todo.id} 
+                        onClick={() => setViewingTodoDetail(todo)}
+                        className="bg-white p-5 rounded-[28px] shadow-sm border border-gray-100 flex justify-between items-center group font-black cursor-pointer hover:shadow-md active:scale-98 transition-all"
+                      >
+                          <div className="flex items-center gap-3.5 flex-1 pr-3 overflow-hidden">
+                              {/* 採購項目直接在外層顯示 52x52 清晰商品縮圖 */}
+                              {todo.image ? (
+                                <div 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLightboxImg(todo.image!);
+                                  }}
+                                  className="w-[52px] h-[52px] rounded-2xl overflow-hidden shrink-0 border border-gray-200 shadow-xs relative group/img cursor-pointer"
+                                  title="點擊全螢幕放大"
+                                >
+                                  <img src={todo.image} className="w-full h-full object-cover group-hover/img:scale-105 transition-transform" />
+                                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-[10px] text-white">
+                                    🔍
+                                  </div>
+                                </div>
+                              ) : prepSubTab === '採購' ? (
+                                <div className="w-[52px] h-[52px] rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-xl shrink-0">
+                                  🛍️
+                                </div>
+                              ) : null}
+
+                              <div className="flex flex-col flex-1 overflow-hidden">
+                                  <h4 className={`text-sm font-black transition-all truncate ${todo.completedAssigneeIds.length === todo.assigneeIds.length && todo.assigneeIds.length > 0 ? 'line-through opacity-30 text-gray-400' : 'text-black'}`}>
+                                    {todo.task}
+                                  </h4>
+
+                                  {todo.note && <p className="text-[10px] text-gray-600 font-normal mt-0.5 line-clamp-1">💬 {todo.note}</p>}
+                                  <p className="text-[9px] text-gray-400 mt-0.5 font-mono">最後編輯: {getMember(todo.lastUpdatedById).name}</p>
+                                  
+                                  <div className="flex gap-1.5 mt-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                                      {todo.assigneeIds.map(id => {
+                                          const m = getMember(id);
+                                          const isDone = todo.completedAssigneeIds.includes(id);
+                                          return (
+                                              <button key={id} onClick={() => {
+                                                  const question = isDone ? `取消 ${m.name} 的完成狀態？` : `標記 ${m.name} 已完成？`;
+                                                  if(!confirm(question)) return;
+                                                  const nComp = isDone ? todo.completedAssigneeIds.filter(cid=>cid!==id) : [...todo.completedAssigneeIds, id];
+                                                  const n = todos.map(t=>t.id===todo.id ? {...t, completedAssigneeIds: nComp, lastUpdatedById: user.id} : t);
+                                                  setTodos(n); sync({todos:n});
+                                              }} className={`text-[8px] px-2.5 py-1 rounded-full font-black shadow-xs transition-all flex items-center gap-1 ${isDone ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                                {m?.name} {isDone && "✅"}
+                                              </button>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                              <button onClick={()=>setEditingTodoModal(todo)} className="text-blue-400 text-sm p-1.5 hover:bg-blue-50 rounded-lg">🖋️</button>
+                              <button onClick={()=>{if(confirm('確定刪除此事項？')){const n=todos.filter(t=>t.id!==todo.id); setTodos(n); sync({todos:n});}}} className="text-red-400 text-sm p-1.5 hover:bg-red-50 rounded-lg">✕</button>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
+        {/* --- [Tab: 成員] --- */}
         {activeTab === '成員' && (
           <div className="animate-in fade-in space-y-4 pb-20 font-black">
             <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-3xl p-5 text-white shadow-lg flex justify-between items-center">
@@ -3678,7 +4076,7 @@ function MainApp({
 
       {/* 獨立大視窗彈窗：幫人代墊款項設定 Modal */}
       {showAdvanceModal && (
-        <div className="fixed inset-0 bg-black/80 z-[160] p-4 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[160] p-4 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-lg max-h-[90vh] p-7 rounded-[44px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
               <div className="flex items-center gap-2">
@@ -3690,8 +4088,8 @@ function MainApp({
               </div>
               <button 
                 type="button" 
-                onClick={() => setShowAdvanceModal(false)}
-                className="w-9 h-9 bg-gray-100 text-gray-500 hover:text-black rounded-full flex items-center justify-center text-sm font-black"
+                onClick={() => setShowAdvanceModal(false)} 
+                className="w-9 h-9 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center text-sm font-black hover:bg-gray-200 transition-colors"
               >
                 ✕
               </button>
@@ -3796,11 +4194,13 @@ function MainApp({
               )}
             </div>
 
-            {/* 底部操作：取消 (紅字) / 保存 */}
             <div className="flex gap-3 mt-6 pt-3 border-t border-gray-100 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowAdvanceModal(false)}
+                onClick={() => {
+                  setIsAdvanceConfigured(false);
+                  setShowAdvanceModal(false);
+                }}
                 className="flex-1 py-4 bg-gray-100 hover:bg-red-50 text-red-500 rounded-2xl text-xs font-black active:scale-95 transition-all"
               >
                 取消
@@ -3817,8 +4217,363 @@ function MainApp({
         </div>
       )}
 
+      {/* 獨立大視窗彈窗：多人分帳設定 Modal */}
+      {showSplitModal && (
+        <div className="fixed inset-0 bg-black/80 z-[160] p-4 flex items-center justify-center font-black overflow-y-auto">
+          <div className="bg-white w-full max-w-lg p-7 rounded-[44px] shadow-2xl text-black flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <h3 className="text-lg font-black text-black">設定多人分帳對象</h3>
+              <button type="button" onClick={() => setShowSplitModal(false)} className="w-9 h-9 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center text-sm">✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mb-6 overflow-y-auto max-h-[60vh]">
+              {allMembers.filter(m => currentMemberIds.includes(m.id)).map(m => {
+                const isChecked = tempSplitMemberIds.includes(m.id);
+                return (
+                  <div key={m.id} onClick={() => {
+                    const next = isChecked ? tempSplitMemberIds.filter(id => id !== m.id) : [...tempSplitMemberIds, m.id];
+                    setTempSplitMemberIds(next);
+                  }} className={`p-3.5 rounded-2xl border-2 flex items-center gap-3 cursor-pointer transition-all ${isChecked ? 'border-emerald-600 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-gray-50'}`}>
+                    <img src={m.avatar} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                    <span className="text-xs font-black text-black truncate">{m.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 pt-3 border-t border-gray-100">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setIsSplitConfigured(false);
+                  setShowSplitModal(false);
+                }} 
+                className="flex-1 py-4 bg-gray-100 text-red-500 rounded-2xl text-xs font-black"
+              >
+                取消
+              </button>
+              <button type="button" onClick={handleSaveSplitModal} className="flex-1 py-4 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md">✓ 保存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💥 獨立彈窗：多人分帳成員個別結清管理 Modal */}
+      {managingSplitRecord && (
+        <div className="fixed inset-0 bg-black/80 z-[165] p-4 flex items-center justify-center font-black overflow-y-auto">
+          <div className="bg-white w-full max-w-md p-6 rounded-[40px] shadow-2xl text-black flex flex-col animate-in zoom-in-95 max-h-[88vh]">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-base font-black text-black">多人分帳收款管理</h3>
+                <p className="text-[10px] text-gray-400 font-mono">
+                  {managingSplitRecord.category} · 總額: {managingSplitRecord.amount} {managingSplitRecord.currency} (≈ NT$ {managingSplitRecord.twdAmount})
+                </p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setManagingSplitRecord(null)} 
+                className="w-8 h-8 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center text-xs font-black hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3 mb-4 shrink-0 text-xs text-emerald-950 font-normal">
+              <span className="font-black">先付款人：</span> {getMember(managingSplitRecord.payerId).name} 💳<br />
+              <span className="font-black">分攤人數：</span> {(managingSplitRecord.splitMemberIds || currentMemberIds).length} 人均分<br />
+              <span className="font-black">每人應付：</span> ≈ {Math.round(Number(managingSplitRecord.amount) / ((managingSplitRecord.splitMemberIds || currentMemberIds).length || 1))} {managingSplitRecord.currency} (約 NT$ {Math.round(Number(managingSplitRecord.twdAmount) / ((managingSplitRecord.splitMemberIds || currentMemberIds).length || 1))})
+            </div>
+
+            <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
+              {(managingSplitRecord.splitMemberIds || currentMemberIds).map(mId => {
+                const member = getMember(mId);
+                const isPayer = mId === managingSplitRecord.payerId;
+                const settledList = managingSplitRecord.splitSettledMemberIds || [];
+                const isSettled = isPayer || settledList.includes(mId);
+
+                return (
+                  <div key={mId} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl border border-gray-100">
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <img src={member.avatar} className="w-8 h-8 rounded-full object-cover shrink-0 shadow-xs" />
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-black text-black truncate">{member.name}</p>
+                        <span className="text-[9px] text-gray-400 font-mono">
+                          {isPayer ? '先行代付者 (免收款)' : isSettled ? '✅ 款項已結清' : '⏳ 尚未付款'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      {isPayer ? (
+                        <span className="text-[10px] bg-blue-100 text-blue-800 px-3 py-1.5 rounded-xl font-black">
+                          先付款人
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentSettled = managingSplitRecord.splitSettledMemberIds || [];
+                            const nextSettled = isSettled 
+                              ? currentSettled.filter(id => id !== mId)
+                              : [...currentSettled, mId];
+                            
+                            const splitTarget = (managingSplitRecord.splitMemberIds || currentMemberIds).filter(id => id !== managingSplitRecord.payerId);
+                            const allCleared = splitTarget.length > 0 && splitTarget.every(id => nextSettled.includes(id));
+
+                            const updatedRecord: ExpenseRecord = {
+                              ...managingSplitRecord,
+                              splitSettledMemberIds: nextSettled,
+                              isSplitSettled: allCleared,
+                              lastUpdatedById: user.id
+                            };
+
+                            const nextRecords = records.map(r => r.id === managingSplitRecord.id ? updatedRecord : r);
+                            setRecords(nextRecords);
+                            sync({ records: nextRecords });
+                            setManagingSplitRecord(updatedRecord);
+                          }}
+                          className={`text-xs px-3.5 py-1.5 rounded-xl font-black transition-all active:scale-95 shadow-xs ${
+                            isSettled
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                          }`}
+                        >
+                          {isSettled ? '✓ 已結清' : '點擊結清'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setManagingSplitRecord(null)}
+              className="w-full mt-4 py-3 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md shrink-0"
+            >
+              完成並關閉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 憑證詳細資訊彈窗 */}
+      {viewingVoucherDetail && (
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[155] flex items-center justify-center p-4 font-black"
+          onClick={() => setViewingVoucherDetail(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-md p-6 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[88vh] overflow-y-auto flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <span className="text-xl">🎫</span>
+                <h3 className="text-base font-black text-black truncate">{viewingVoucherDetail.title}</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setViewingVoucherDetail(null)} 
+                className="w-9 h-9 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center text-sm font-black hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex justify-between items-center mb-3 text-xs">
+              <span className={`px-3 py-1 rounded-full font-black ${viewingVoucherDetail.status === 'used' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {viewingVoucherDetail.status === 'used' ? '✅ 已使用憑證' : '🎫 未使用憑證'}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                最後編輯: {getMember(viewingVoucherDetail.lastUpdatedById).name}
+              </span>
+            </div>
+
+            {viewingVoucherDetail.status === 'used' && (
+              <p className="text-[10px] text-emerald-800 bg-emerald-50 p-2.5 rounded-xl mb-3 font-normal">
+                已由 {viewingVoucherDetail.usedByMemberName || '旅伴'} 於 {viewingVoucherDetail.usedAt || '剛剛'} 使用核銷。
+              </p>
+            )}
+
+            {viewingVoucherDetail.image ? (
+              <div 
+                onClick={() => setLightboxImg(viewingVoucherDetail.image!)}
+                className="relative cursor-pointer group bg-gray-50 rounded-3xl p-2 border border-gray-100 mb-4 flex justify-center overflow-hidden"
+                title="點擊全螢幕放大查看"
+              >
+                <img 
+                  src={viewingVoucherDetail.image} 
+                  className="w-full max-h-72 object-contain rounded-2xl shadow-sm group-hover:scale-102 transition-transform" 
+                  alt="voucher detail" 
+                />
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-3xl">
+                  🔍 點擊全螢幕放大
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 bg-gray-50 rounded-3xl text-center text-gray-400 text-xs mb-4">
+                此憑證未附照片
+              </div>
+            )}
+
+            <div className="space-y-2 mt-auto pt-2">
+              {viewingVoucherDetail.status !== 'used' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const next = bookings.map(item => item.id === viewingVoucherDetail.id ? {
+                      ...item,
+                      status: 'used' as const,
+                      usedByMemberName: user.name,
+                      usedAt: nowStr,
+                      lastUpdatedById: user.id
+                    } : item);
+                    setBookings(next);
+                    sync({ bookings: next });
+                    setViewingVoucherDetail(null);
+                    alert(`✅ 憑證「${viewingVoucherDetail.title}」已標記為使用！`);
+                  }}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform"
+                >
+                  ✓ 標記為已使用
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = bookings.map(item => item.id === viewingVoucherDetail.id ? {
+                      ...item,
+                      status: 'unused' as const,
+                      usedByMemberName: undefined,
+                      usedAt: undefined,
+                      lastUpdatedById: user.id
+                    } : item);
+                    setBookings(next);
+                    sync({ bookings: next });
+                    setViewingVoucherDetail(null);
+                    alert(`↺ 憑證「${viewingVoucherDetail.title}」已改回未使用！`);
+                  }}
+                  className="w-full py-3.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-2xl text-xs font-black active:scale-98 transition-transform"
+                >
+                  ↺ 改回未使用
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setViewingVoucherDetail(null)}
+                className="w-full py-3 bg-gray-100 text-gray-600 rounded-2xl text-xs font-black hover:bg-gray-200"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 準備清單詳細備註與商品照片彈窗 */}
+      {viewingTodoDetail && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 font-black"
+          onClick={() => setViewingTodoDetail(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-t-[40px] sm:rounded-[40px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto text-black flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden shrink-0" />
+
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-3 overflow-hidden pr-2">
+                <span className="text-2xl shrink-0 p-2.5 bg-[#F9F8F3] rounded-2xl border border-gray-200">
+                  {viewingTodoDetail.category === '待辦' ? '💼' : viewingTodoDetail.category === '行李' ? '🧳' : '🛍️'}
+                </span>
+                <div className="overflow-hidden">
+                  <h3 className="text-lg font-black text-black truncate">{viewingTodoDetail.task}</h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-mono">
+                      {viewingTodoDetail.category}
+                    </span>
+                    {viewingTodoDetail.lastUpdatedById && (
+                      <span className="text-[9px] text-gray-400">
+                        最後編輯: {getMember(viewingTodoDetail.lastUpdatedById).name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setViewingTodoDetail(null)} 
+                className="w-9 h-9 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-black shrink-0 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-4 shrink-0">
+              <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">指派成員與進度</p>
+              <div className="flex gap-2 flex-wrap">
+                {viewingTodoDetail.assigneeIds.map(id => {
+                  const m = getMember(id);
+                  const isDone = viewingTodoDetail.completedAssigneeIds.includes(id);
+                  return (
+                    <span 
+                      key={id} 
+                      className={`text-xs px-3 py-1.5 rounded-full font-black flex items-center gap-1.5 ${isDone ? 'bg-green-600 text-white shadow-xs' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}
+                    >
+                      <img src={m.avatar} className="w-4 h-4 rounded-full object-cover" />
+                      <span>{m.name}</span>
+                      <span>{isDone ? '✅ 已完成' : '⏳ 待處理'}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {viewingTodoDetail.image && (
+              <div className="mb-4 shrink-0">
+                <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">商品參考相片 (點擊放大)</p>
+                <div 
+                  onClick={() => setLightboxImg(viewingTodoDetail.image!)}
+                  className="relative cursor-pointer group bg-gray-50 rounded-2xl p-2 border border-gray-100 flex justify-center max-h-60 overflow-hidden"
+                  title="點擊全螢幕放大查看"
+                >
+                  <img src={viewingTodoDetail.image} className="max-h-56 object-contain rounded-xl shadow-xs group-hover:scale-102 transition-transform" />
+                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-black transition-opacity rounded-2xl">
+                    🔍 點擊放大
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 rounded-3xl p-5 border border-gray-100 overflow-y-auto flex-1 mb-5">
+              <p className="text-[11px] text-gray-400 mb-2 uppercase tracking-wider font-black">備註與詳細說明</p>
+              {viewingTodoDetail.note ? (
+                <p className="text-base text-gray-800 leading-relaxed font-normal whitespace-pre-wrap">
+                  {viewingTodoDetail.note}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400 italic font-normal py-4 text-center">
+                  目前尚未填寫詳細備註～
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewingTodoDetail(null)}
+              className="w-full py-3.5 bg-[#86A760] text-white rounded-2xl text-xs font-black shadow-md active:scale-98 transition-transform shrink-0"
+            >
+              關閉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 編輯憑證彈窗 */}
       {editingVoucherModal && (
-        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
             <h3 className="text-lg italic mb-4 uppercase">編輯憑證資料</h3>
             <label className="text-[10px] text-gray-400 ml-1">憑證標題</label>
@@ -3862,8 +4617,9 @@ function MainApp({
         </div>
       )}
 
+      {/* 編輯記帳紀錄彈窗 */}
       {editingExpenseModal && (
-        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg italic mb-4 uppercase">編輯記帳紀錄</h3>
             <div className="space-y-4">
@@ -4032,8 +4788,9 @@ function MainApp({
         </div>
       )}
 
+      {/* 編輯日誌彈窗 */}
       {editingJournalModal && (
-        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg italic mb-4 uppercase">編輯日誌內容</h3>
             <textarea 
@@ -4139,8 +4896,9 @@ function MainApp({
         </div>
       )}
 
+      {/* 編輯準備項目彈窗（支援編輯相片） */}
       {editingTodoModal && (
-        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[150] p-6 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-7 rounded-[40px] shadow-2xl text-black animate-in zoom-in-95">
             <h3 className="text-lg italic mb-4 uppercase">編輯準備項目</h3>
             <div className="space-y-3">
@@ -4155,15 +4913,40 @@ function MainApp({
               </div>
 
               <div>
-  <label className="text-[10px] text-gray-400 ml-1">備註說明 (支援換行)</label>
-  <textarea 
-    rows={3}
-    value={editingTodoModal.note || ''} 
-    onChange={e => setEditingTodoModal({ ...editingTodoModal, note: e.target.value })} 
-    placeholder="備註說明..." 
-    className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black leading-relaxed resize-none" 
-  />
-</div>
+                <label className="text-[10px] text-gray-400 ml-1">備註說明 (支援換行)</label>
+                <textarea 
+                  rows={3}
+                  value={editingTodoModal.note || ''} 
+                  onChange={e => setEditingTodoModal({ ...editingTodoModal, note: e.target.value })} 
+                  placeholder="備註說明..." 
+                  className="w-full p-3.5 bg-gray-50 rounded-2xl outline-none border border-gray-200 text-xs font-black text-black leading-relaxed resize-none" 
+                />
+              </div>
+
+              {editingTodoModal.category === '採購' && (
+                <div>
+                  <label className="text-[10px] text-gray-400 ml-1">商品相片</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    {editingTodoModal.image ? (
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden border">
+                        <img src={editingTodoModal.image} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditingTodoModal({ ...editingTodoModal, image: undefined })}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white w-4 h-4 rounded-full text-[9px] flex items-center justify-center"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : null}
+                    <ImageUploader 
+                      label={editingTodoModal.image ? "更換相片" : "上傳相片"} 
+                      maxDimension={1000} 
+                      onUpload={(b64) => setEditingTodoModal({ ...editingTodoModal, image: b64 })} 
+                    />
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] text-gray-400 ml-1">指派人員</label>
@@ -4218,8 +5001,9 @@ function MainApp({
         </div>
       )}
 
+      {/* 編輯個人資料與頭像彈窗 */}
       {editingMemberModal && (
-        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black">
+        <div className="fixed inset-0 bg-black/80 z-[110] p-8 flex items-center justify-center font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl text-black">
             <h3 className="text-center italic mb-6 uppercase text-xl">成員設定與頭像更新</h3>
             <div className="flex flex-col items-center gap-3 mb-6">
@@ -4300,6 +5084,7 @@ function MainApp({
         </div>
       )}
 
+      {/* 放大圖片 Lightbox Modal */}
       {lightboxImg && (
         <div 
           className="fixed inset-0 bg-black/90 z-[250] flex items-center justify-center p-4 animate-in fade-in"
@@ -4322,6 +5107,7 @@ function MainApp({
         </div>
       )}
 
+      {/* 新增/編輯景點 Modal */}
       {showPlanModal.show && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end">
             <div className="bg-white w-full p-8 rounded-t-[48px] shadow-2xl animate-in slide-in-from-bottom font-black text-black max-h-[90vh] overflow-y-auto">
@@ -4351,7 +5137,6 @@ function MainApp({
                     {isSearchingPlaces && <span className="text-xs text-gray-400 animate-spin">⏳</span>}
                   </div>
 
-                  {/* 行程景點地標自動搜尋推薦選單 */}
                   {placeSuggestions.length > 0 && (
                     <>
                       <div 
@@ -4416,6 +5201,7 @@ function MainApp({
         </div>
       )}
 
+      {/* 底部導覽列 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t flex justify-around p-4 shadow-2xl z-50">
         {[{id:'行程',icon:'📅'},{id:'預訂',icon:'📔'},{id:'記帳',icon:'👛'},{id:'日誌',icon:'🖋️'},{id:'準備',icon:'💼'},{id:'成員',icon:'👥'}].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 transition-all duration-300 font-black ${activeTab===tab.id?'text-[#86A760] scale-125 font-black -translate-y-1':'opacity-30'}`}>
@@ -4425,8 +5211,9 @@ function MainApp({
         ))}
       </div>
 
+      {/* 新增/編輯航班 Modal */}
       {showFlightModal.show && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-black">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-black overflow-y-auto">
           <div className="bg-white w-full max-w-md p-8 rounded-[48px] shadow-2xl overflow-y-auto max-h-[90vh] text-black">
             <h3 className="text-2xl mb-6 italic text-[#5E9E8E] uppercase tracking-tighter">{showFlightModal.type === 'add' ? 'Add' : 'Edit'} Flight</h3>
             <div className="space-y-4">
@@ -4503,8 +5290,7 @@ export default function AppEntry() {
       const cachedM = localStorage.getItem('app_members_v26');
       if (cachedM) {
         setAllMembers(JSON.parse(cachedM));
-      } else
-      {
+      } else {
         const defaultM: Member[] = [
           { id:'1', account:'wayne', name:'肚皮', avatar: PRESET_ANIMAL_AVATARS[0], loginCode:'wayne', editLogs:['Account created'] },
           { id:'2', account:'elvina', name:'豆豆皮', avatar: PRESET_ANIMAL_AVATARS[1], loginCode:'Elvina', editLogs:['Account created'] }
@@ -4804,18 +5590,18 @@ export default function AppEntry() {
       onSelect={setSelectedTrip} 
       onAddTrip={handleAddTrip} 
       onDeleteTrip={handleDeleteTrip} 
-      onUpdateTripWithMigration={handleUpdateTripWithMigration}
+      onUpdateTripWithMigration={handleUpdateTripWithMigration} 
       onUpdateMembers={handleUpdateMembers} 
-      onUpdateUser={setUser}
-      notice={notice}
-      noticeEnabled={noticeEnabled}
-      onUpdateNotice={handleUpdateNotice}
-      onUpdateNoticeEnabled={handleUpdateNoticeEnabled}
-      changelogs={changelogs}
-      onUpdateChangelogs={handleUpdateChangelogs}
-      loginIcon={loginIcon}
-      onUpdateLoginIcon={handleUpdateLoginIcon}
-      onJoinTrip={handleJoinTrip}
+      onUpdateUser={setUser} 
+      notice={notice} 
+      noticeEnabled={noticeEnabled} 
+      onUpdateNotice={handleUpdateNotice} 
+      onUpdateNoticeEnabled={handleUpdateNoticeEnabled} 
+      changelogs={changelogs} 
+      onUpdateChangelogs={handleUpdateChangelogs} 
+      loginIcon={loginIcon} 
+      onUpdateLoginIcon={handleUpdateLoginIcon} 
+      onJoinTrip={handleJoinTrip} 
     />
   );
 
@@ -4825,8 +5611,8 @@ export default function AppEntry() {
       tripData={selectedTrip} 
       allMembers={allMembers} 
       onUpdateMembers={handleUpdateMembers} 
-      onUpdateTrip={handleUpdateTrip}
-      onUpdateUser={setUser}
+      onUpdateTrip={handleUpdateTrip} 
+      onUpdateUser={setUser} 
       onBack={() => setSelectedTrip(null)} 
     />
   );
