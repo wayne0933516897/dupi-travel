@@ -2079,7 +2079,18 @@ function MainApp({
       console.warn("Sync warning", e);
     }
   };
+  useEffect(() => {
+    const backupInterval = setInterval(() => {
+      console.log("正在執行背景自動備份...");
+      const currentData = {
+        records, schedules, todos, journals, flights, bookings, cityConfigs
+      };
+      // 強制寫入 Supabase 雲端
+      sync(currentData);
+    }, 5 * 60 * 1000); // 5分鐘 (300,000毫秒)
 
+    return () => clearInterval(backupInterval);
+  }, [records, schedules, todos, journals, flights, bookings, cityConfigs, sync]);
   const handleUpdateTripMembers = (newMemberIds: string[]) => {
     const updatedTrip = { ...tripData, memberIds: newMemberIds };
     onUpdateTrip(updatedTrip);
