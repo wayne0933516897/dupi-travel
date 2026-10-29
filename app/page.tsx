@@ -2071,6 +2071,13 @@ function MainApp({
 
   const sync = async (update: any) => {
     const full = { ...stateRef.current, ...update };
+    
+    // 🛡️ 加入這行保險開關：如果發現行程、記帳、準備清單全部都是空的，就直接擋下來，絕對不上傳覆蓋雲端！
+    if (Object.keys(full.schedules || {}).length === 0 && (full.records || []).length === 0 && (full.todos || []).length === 0) {
+      console.warn("⚠️ 偵測到資料為全空狀態，已啟動保護機制，停止覆蓋雲端資料！");
+      return; 
+    }
+
     stateRef.current = full;
     localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(full));
     try {
