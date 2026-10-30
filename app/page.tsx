@@ -2088,39 +2088,81 @@ function MainApp({
     };
   }, [tripData.id]);
 
-  const sync = async (update: any) => {
-    const full = { ...stateRef.current, ...update };
-    
-    // 🛡️ 加入這行保險開關：如果發現行程、記帳、準備清單全部都是空的，就直接擋下來，絕對不上傳覆蓋雲端！
-    if (Object.keys(full.schedules || {}).length === 0 && (full.records || []).length === 0 && (full.todos || []).length === 0) {
-      console.warn("⚠️ 偵測到資料為全空狀態，已啟動保護機制，停止覆蓋雲端資料！");
-      return; 
-    }
+// 🛡️ 3小時/5天 歷史快照備份機制 (自動管理)
+const handleHistoricalBackup = async (currentData: any) => {
+  const BACKUP_INTERVAL = 3 * 60 * 60 * 1000; // 3 小時的毫秒數
+  const RETENTION_PERIOD = 5 * 24 * 60 * 60 * 1000; // 5 天的毫秒數
+  const now = Date.now();
+  const lastBackupKey = `last_backup_time_${tripData.id}`;
+  const lastBackupTime = parseInt(localStorage.getItem(lastBackupKey) || '0', 10);
 
-    stateRef.current = full;
-    localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(full));
+  // 如果距離上次備份已經超過 3 小時，觸發新備份
+  if (now - lastBackupTime >= BACKUP_INTERVAL) {
+    console.log("🕒 觸發 3 小時歷史快照備份...");
     try {
-      await supabase.from('trips').upsert({ id: tripData.id, content: full });
-    } catch(e) {
-      console.warn("Sync warning", e);
-    }
-  };
-  useEffect(() => {
-    const backupInterval = setInterval(() => {
-      console.log("正在執行背景自動備份...");
-      const currentData = {
-        records, schedules, todos, journals, flights, bookings, cityConfigs
-      };
-      // 強制寫入 Supabase 雲端
-      sync(currentData);
-    }, 5 * 60 * 1000); // 5分鐘 (300,000毫秒)
+      // 1. 寫入新快照備份 (將 ID 加上 _backup_時間戳 作為獨立紀錄)
+      const backupId = `${tripData.id}_backup_${now}`;
+      await supabase.from('trips').upsert({ id: backupId, content: currentData });
+      localStorage.setItem(lastBackupKey, now.toString()); // 記錄本次備份時間
 
-    return () => clearInterval(backupInterval);
-  }, [records, schedules, todos, journals, flights, bookings, cityConfigs, sync]);
-  const handleUpdateTripMembers = (newMemberIds: string[]) => {
-    const updatedTrip = { ...tripData, memberIds: newMemberIds };
-    onUpdateTrip(updatedTrip);
-  };
+      // 2. 抓取舊備份清單，並清理超過 5 天的資料
+      const { data: existingBackups } = await supabase
+        .from('trips')
+        .select('id')
+        .like('id', `${tripData.id}_backup_%`);
+
+      if (existingBackups) {
+        const cutoffTime = now - RETENTION_PERIOD;
+        const toDelete = existingBackups.filter(b => {
+          const parts = b.id.split('_backup_');
+          if (parts.length === 2) {
+            const bTime = parseInt(parts[1], 10);
+            return bTime < cutoffTime; // 判斷是否小於 5 天前的時間戳
+          }
+          return false;
+        }).map(b => b.id);
+
+        // 一次性刪除所有過期的快照備份
+        if (toDelete.length > 0) {
+          await supabase.from('trips').delete().in('id', toDelete);
+          console.log(`🗑️ 已自動清理 ${toDelete.length} 筆過期備份`);
+        }
+      }
+    } catch (err) {
+      console.error("備份機制發生錯誤:", err);
+    }
+  }
+};
+
+// 原有的資料同步功能 (加入觸發備份的邏輯)
+const sync = async (update: any) => {
+  const full = { ...stateRef.current, ...update };
+  
+  // 🛡️ 保險開關：如果發現行程、記帳、準備清單全部都是空的，就直接擋下來！
+  if (Object.keys(full.schedules || {}).length === 0 && (full.records || []).length === 0 && (full.todos || []).length === 0) {
+    console.warn("⚠️ 偵測到資料為全空狀態，已啟動保護機制，停止覆蓋雲端資料！");
+    return; 
+  }
+
+  stateRef.current = full;
+  localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(full));
+  try {
+    // 更新主資料
+    await supabase.from('trips').upsert({ id: tripData.id, content: full });
+    
+    // 👇 在每次成功同步主資料後，檢查是否需要進行 3 小時快照備份
+    handleHistoricalBackup(full);
+    
+  } catch(e) {
+    console.warn("Sync warning", e);
+  }
+};
+
+
+const handleUpdateTripMembers = (newMemberIds: string[]) => {
+  const updatedTrip = { ...tripData, memberIds: newMemberIds };
+  onUpdateTrip(updatedTrip);
+};
 
   const sortedFlights = useMemo(() => {
     return [...flights].sort((a, b) => {
@@ -2694,6 +2736,147 @@ function MainApp({
         )}
         {/* --- [Tab: 預訂] --- */}
         {activeTab === '預訂' && (
+          <div className="animate-in fade-in space-y-6 pb-20">
+            <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
+                {['機票','憑證'].map(t=>(
+                    <button key={t} onClick={()=>setBookSubTab(t)} className={`flex-1 py-3 rounded-full text-xs transition-all uppercase italic font-black ${bookSubTab===t?'bg-[#E9C46A] text-white shadow-md scale-105':'text-gray-400'}`}>{t}</button>
+                ))}
+            </div>
+
+            {bookSubTab === '機票' ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">Flight Info</h3>
+                  <button onClick={()=>{setFlightForm({ id: 0, airline: '', flightNo: '', fromCode: '', toCode: '', depTime: '10:00', arrTime: '14:00', duration: '', date: dynamicTripDates[0] || '10/07', baggage: '', aircraft: '' }); setShowFlightModal({show:true, type:'add', data:null});}} className="bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full font-black">+ ADD</button>
+                </div>
+                {sortedFlights.map(f => (
+                  <div key={f.id} className="bg-white rounded-[40px] shadow-2xl overflow-hidden border border-blue-50 relative p-6 font-black">
+                    <div className="flex justify-between mb-4 border-b border-dashed pb-4">
+                      <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-black">{f.airline}</span>
+                      <h2 className="text-2xl font-black italic">{f.flightNo}</h2>
+                    </div>
+                    <div className="flex justify-between text-center items-center">
+                      <div><p className="text-3xl font-black">{f.fromCode}</p><p className="text-blue-500 font-mono text-sm">{f.depTime}</p></div>
+                      <div className="flex-1 flex flex-col items-center opacity-40"><span className="text-[10px] uppercase font-black">{f.duration}</span><div className="w-full h-px bg-blue-100 my-1 relative"><span className="absolute -top-2 left-1/2 -translate-x-1/2">✈️</span></div><p className="text-[10px] font-black text-black">{f.date}</p></div>
+                      <div><p className="text-3xl font-black">{f.toCode}</p><p className="text-blue-600 font-mono text-sm">{f.arrTime}</p></div>
+                    </div>
+                    <div className="flex justify-between items-center mt-4">
+                      <span className="text-[9px] text-gray-400 font-black">最後編輯: {getMember(f.lastUpdatedById).name}</span>
+                      <div className="flex gap-3">
+                        <button onClick={()=>{setFlightForm(f); setShowFlightModal({show:true, type:'edit', data:f});}} className="text-blue-400 text-xs">🖋️</button>
+                        <button onClick={()=>{if(confirm('確定刪除此機票？')){const n=flights.filter(i=>i.id!==f.id); setFlights(n); sync({flights:n});}}} className="text-red-300 text-xs">🗑️</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-gray-200 text-center shadow-sm">
+                  <ImageUploader label="UPLOAD VOUCHER (新增憑證相片)" maxDimension={1200} onUpload={(b64)=>{
+                    const title=prompt("請輸入憑證名稱 (例如: 迪士尼門票):"); 
+                    if(title){
+                      const newDoc: BookingDoc = {
+                        id: Date.now(), 
+                        type: '憑證', 
+                        title: title.trim(), 
+                        image: b64, 
+                        lastUpdatedById: user.id,
+                        status: 'unused'
+                      };
+                      const n = [newDoc, ...bookings]; 
+                      setBookings(n); 
+                      sync({bookings:n});
+                    }
+                  }} />
+                </div>
+
+                <div className="flex bg-gray-100 rounded-2xl p-1 font-black">
+                  <button 
+                    onClick={() => setVoucherSubTab('未使用')} 
+                    className={`flex-1 py-2.5 rounded-xl text-xs transition-all font-black ${voucherSubTab === '未使用' ? 'bg-white text-black shadow-sm' : 'text-gray-400'}`}
+                  >
+                    🎫 未使用 ({bookings.filter(b => (b.status || 'unused') === 'unused').length})
+                  </button>
+                  <button 
+                    onClick={() => setVoucherSubTab('已使用')} 
+                    className={`flex-1 py-2.5 rounded-xl text-xs transition-all font-black ${voucherSubTab === '已使用' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-400'}`}
+                  >
+                    ✅ 已使用 ({bookings.filter(b => b.status === 'used').length})
+                  </button>
+                </div>
+
+                <h3 className="text-[#5E9E8E] italic uppercase text-xs tracking-widest font-black">
+                  {voucherSubTab === '未使用' ? 'Unused Vouchers' : 'Used Vouchers'}
+                </h3>
+
+                {bookings.filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used').length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 text-xs bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                    <p>{voucherSubTab === '未使用' ? '目前沒有未使用的憑證' : '目前沒有已使用的憑證'}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {bookings
+                      .filter(b => voucherSubTab === '未使用' ? (b.status || 'unused') === 'unused' : b.status === 'used')
+                      .map(b => (
+                        <div 
+                          key={b.id} 
+                          onClick={() => setViewingVoucherDetail(b)}
+                          className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 cursor-pointer hover:shadow-md active:scale-98 transition-all font-black group"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden flex-1">
+                            {b.image ? (
+                              <img 
+                                src={b.image} 
+                                className="w-14 h-14 rounded-2xl object-cover shrink-0 border border-gray-100 shadow-xs" 
+                                alt={b.title} 
+                              />
+                            ) : (
+                              <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 border border-orange-100">
+                                🎫
+                              </div>
+                            )}
+                            <div className="overflow-hidden flex-1">
+                              <h4 className="text-sm font-black text-black truncate">{b.title}</h4>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-black ${b.status === 'used' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                  {b.status === 'used' ? '已使用' : '未使用'}
+                                </span>
+                                <span className="text-[9px] text-gray-400 font-mono truncate">
+                                  {getMember(b.lastUpdatedById).name}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                            <button 
+                              type="button" 
+                              onClick={() => setEditingVoucherModal(b)} 
+                              className="text-blue-500 text-xs font-black p-1.5 hover:bg-blue-50 rounded-lg"
+                              title="編輯憑證"
+                            >
+                              🖋️
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => {if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} 
+                              className="text-red-400 text-xs font-black p-1.5 hover:bg-red-50 rounded-lg"
+                              title="刪除憑證"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+{/* --- [Tab: 預訂] --- */}
+{activeTab === '預訂' && (
           <div className="animate-in fade-in space-y-6 pb-20">
             <div className="flex bg-white rounded-full p-1 mb-6 shadow-sm border border-gray-100 font-black">
                 {['機票','憑證'].map(t=>(
@@ -3711,6 +3894,7 @@ function MainApp({
             </div>
           </div>
         )}
+
         {/* --- [Tab: 準備] --- */}
         {activeTab === '準備' && (
           <div className="animate-in fade-in pb-20">
