@@ -853,7 +853,6 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
     </div>
   );
 }
-
 // 2. 主畫面 (TripSelector)
 function TripSelector({ 
   user, 
@@ -1578,6 +1577,7 @@ function MainApp({
   onUpdateTrip: (updated: Trip) => void, 
   onUpdateUser: (u: Member) => void 
 }) {
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState('行程');
   const [activeDay, setActiveDay] = useState(1);
   const [prepSubTab, setPrepSubTab] = useState('待辦');
@@ -1758,7 +1758,9 @@ function MainApp({
   // 行李清單初始化：若目前無行李項目，自動注入歷史/預設清單（未準備狀態）
   const hasInitializedPackingRef = useRef(false);
   useEffect(() => {
+    if (!isDataLoaded) return;
     if (hasInitializedPackingRef.current) return;
+    
     const currentPackingItems = todos.filter(t => t.category === '行李');
     if (currentPackingItems.length === 0) {
       let savedHistoryItems: string[] = [];
@@ -1800,7 +1802,7 @@ function MainApp({
       }
     }
     hasInitializedPackingRef.current = true;
-  }, [todos, currentMemberIds, user.id]);
+  }, [todos, currentMemberIds, user.id, isDataLoaded]);
 
   // 行李清單異動時，同步記憶至使用者個人偏好歷程
   const savePackingHistory = (currentTodos: TodoItem[]) => {
@@ -2037,17 +2039,34 @@ function MainApp({
       fetchWeatherForDay(activeDay, c.cityConfigs);
     }
     localStorage.setItem(`trip_cache_${tripData.id}`, JSON.stringify(c));
+
+    stateRef.current = {
+      ...stateRef.current,
+      records: c.records || [],
+      schedules: c.schedules || {},
+      todos: c.todos || [],
+      journals: c.journals || [],
+      flights: c.flights || [],
+      bookings: c.bookings || [],
+      cityConfigs: c.cityConfigs || []
+    };
   };
 
   useEffect(() => {
     const cached = localStorage.getItem(`trip_cache_${tripData.id}`);
     if (cached) {
-      try { updateLocalState(JSON.parse(cached)); } catch(e){}
+      try { 
+        updateLocalState(JSON.parse(cached)); 
+        setIsDataLoaded(true);
+      } catch(e){}
     }
 
     const loadCloudData = async () => {
       const { data } = await supabase.from('trips').select('content').eq('id', tripData.id).single();
-      if (data?.content) updateLocalState(data.content);
+      if (data?.content) {
+        updateLocalState(data.content);
+      }
+      setIsDataLoaded(true);
     };
     loadCloudData();
 
@@ -2673,7 +2692,6 @@ function MainApp({
             </div>
           </div>
         )}
-
         {/* --- [Tab: 預訂] --- */}
         {activeTab === '預訂' && (
           <div className="animate-in fade-in space-y-6 pb-20">
@@ -2800,7 +2818,7 @@ function MainApp({
                             </button>
                             <button 
                               type="button" 
-                              onClick={()=>{if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} 
+                              onClick={() => {if(confirm('確定刪除此憑證？')){const n=bookings.filter(i=>i.id!==b.id); setBookings(n); sync({bookings:n});}}} 
                               className="text-red-400 text-xs font-black p-1.5 hover:bg-red-50 rounded-lg"
                               title="刪除憑證"
                             >
@@ -2815,6 +2833,7 @@ function MainApp({
             )}
           </div>
         )}
+
         {/* --- [Tab: 記帳] --- */}
         {activeTab === '記帳' && (
           <div className="animate-in fade-in pb-20 font-black">
@@ -3692,7 +3711,6 @@ function MainApp({
             </div>
           </div>
         )}
-
         {/* --- [Tab: 準備] --- */}
         {activeTab === '準備' && (
           <div className="animate-in fade-in pb-20">
@@ -3996,8 +4014,8 @@ function MainApp({
                                                   const n = todos.map(t=>t.id===todo.id ? {...t, completedAssigneeIds: nComp, lastUpdatedById: user.id} : t);
                                                   setTodos(n); sync({todos:n});
                                               }} className={`text-[8px] px-2.5 py-1 rounded-full font-black shadow-xs transition-all flex items-center gap-1 ${isDone ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                                                <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
-                                                {m?.name} {isDone && "✅"}
+                                                  <img src={m.avatar} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                                  {m?.name} {isDone && "✅"}
                                               </button>
                                           );
                                       })}
