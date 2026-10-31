@@ -855,6 +855,7 @@ function AuthPage({ onLogin, allMembers, onRegister, loginIcon }: { onLogin: (m:
 }
 // 2. 主畫面 (TripSelector)
 function TripSelector({ 
+  
   user, 
   onLogout, 
   onSelect, 
@@ -896,6 +897,43 @@ function TripSelector({
   onJoinTrip: (code: string) => void 
 }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
+  // 🛡️ Wayne 管理員專用：一鍵備份全站所有資料
+  const handleBackupEntireApp = async () => {
+    try {
+      const confirmBackup = confirm("確定要立即備份整個 App 的所有資料嗎？\n系統將會上傳雲端快照並下載備份檔案至本機。");
+      if (!confirmBackup) return;
+
+      const { data, error } = await supabase.from('trips').select('*');
+
+      if (error || !data) {
+        alert("❌ 備份失敗：" + (error?.message || "無法讀取雲端資料"));
+        return;
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupSnapshotId = `__full_app_backup_${Date.now()}__`;
+
+      await supabase.from('trips').upsert({
+        id: backupSnapshotId,
+        content: data
+      });
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dupi_travel_full_backup_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert(`✅ 全站備份成功！\n1. 已在 Supabase 建立雲端快照 (${backupSnapshotId})\n2. 已下載 JSON 備份檔至您的裝置。`);
+    } catch (err) {
+      console.error(err);
+      alert("❌ 備份過程中發生未預期錯誤");
+    }
+  };
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -1035,6 +1073,15 @@ function TripSelector({
                   <button onClick={() => { setShowUserDropdown(false); setShowUserAdmin(true); }} className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-gray-50 flex items-center gap-2 font-black">
                     👥 成員管理名冊
                   </button>
+                  <button 
+  onClick={() => { 
+    setShowUserDropdown(false); 
+    handleBackupEntireApp(); 
+  }} 
+  className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-emerald-50 flex items-center gap-2 text-emerald-700 font-black border-t border-gray-100"
+>
+  💾 一鍵備份全站資料 (匯出 JSON)
+</button>
                 </>
               )}
               <button onClick={() => { setShowUserDropdown(false); onLogout(); }} className="w-full text-left p-2.5 rounded-xl text-xs text-red-500 hover:bg-red-50 flex items-center gap-2 font-black">
@@ -5681,6 +5728,7 @@ export default function AppEntry() {
       loginIcon={loginIcon} 
       onUpdateLoginIcon={handleUpdateLoginIcon} 
       onJoinTrip={handleJoinTrip} 
+      
     />
   );
 
