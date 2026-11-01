@@ -898,9 +898,10 @@ function TripSelector({
 }) {
   const [showAddTrip, setShowAddTrip] = useState(false);
 // 💾 Wayne 管理員專用：一鍵備份全站資料
+// 💾 Wayne 管理員專用：一鍵備份全站資料 (匯出 JSON)
 const handleBackupEntireApp = async () => {
   try {
-    const confirmBackup = confirm("確定要立即備份整個 App 的所有資料嗎？\n系統將嘗試上傳雲端快照並下載備份檔案至本機。");
+    const confirmBackup = confirm("確定要立即備份整個 App 的所有資料嗎？\n系統將匯出完整的離線 JSON 備份檔案至您的裝置。");
     if (!confirmBackup) return;
 
     const { data, error } = await supabase.from('trips').select('*');
@@ -910,21 +911,8 @@ const handleBackupEntireApp = async () => {
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupSnapshotId = `__full_app_backup_${Date.now()}__`;
 
-    // 嘗試寫入雲端快照（若資料太大被伺服器阻擋，跳過不影響下載）
-    let cloudSaved = false;
-    try {
-      const { error: upsertError } = await supabase.from('trips').upsert({
-        id: backupSnapshotId,
-        content: data
-      });
-      if (!upsertError) cloudSaved = true;
-    } catch (e) {
-      console.warn("全站資料量較大，略過雲端單筆快照");
-    }
-
-    // 下載 JSON 實體檔案到裝置（最關鍵的安全複本）
+    // 下載 JSON 實體檔案到裝置（最完整、最安全的還原依據）
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -935,11 +923,8 @@ const handleBackupEntireApp = async () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    if (cloudSaved) {
-      alert(`✅ 全站備份成功！\n1. 已在 Supabase 建立雲端快照 (${backupSnapshotId})\n2. 已下載 JSON 備份檔至您的裝置。`);
-    } else {
-      alert(`✅ 全站備份成功！\n備份檔（大小約 ${(blob.size / 1024 / 1024).toFixed(1)} MB）已成功下載至您的裝置。\n（因資料量較大已轉由本機備份檔妥善保存）`);
-    }
+    const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+    alert(`✅ 全站備份成功！\n共打包 ${data.length} 筆資料（大小約 ${sizeMB} MB）。\n備份檔已儲存至您的下載資料夾，日後可隨時使用「從 JSON 還原」進行智能復原。`);
   } catch (err) {
     console.error(err);
     alert("❌ 備份過程中發生未預期錯誤");
