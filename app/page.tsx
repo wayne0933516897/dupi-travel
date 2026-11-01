@@ -934,6 +934,52 @@ function TripSelector({
       alert("❌ 備份過程中發生未預期錯誤");
     }
   };
+  // 🔄 Wayne 管理員專用：從 JSON 檔案還原全站資料
+  const handleRestoreEntireApp = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+
+      const confirmRestore = confirm(`⚠️ 警告：即將從備份檔「${file.name}」還原全站資料！\n這將會覆蓋或寫入資料庫，確定要繼續嗎？`);
+      if (!confirmRestore) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const jsonContent = event.target?.result as string;
+          const backupData = JSON.parse(jsonContent);
+
+          if (!Array.isArray(backupData)) {
+            alert("❌ 格式錯誤：此 JSON 備份檔無效（必須是資料陣列）。");
+            return;
+          }
+
+          // 逐筆將備份資料寫回 Supabase 的 trips 表格
+          for (const item of backupData) {
+            if (!item.id) continue;
+            await supabase.from('trips').upsert({
+              id: item.id,
+              content: item.content
+            });
+          }
+
+          alert("✅ 全站資料還原成功！\n頁面即將重新整理以載入最新資料。");
+          window.location.reload();
+        } catch (err) {
+          console.error(err);
+          alert("❌ 還原失敗：解析 JSON 檔案時發生錯誤。");
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    input.click();
+  };
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -1082,6 +1128,15 @@ function TripSelector({
 >
   💾 一鍵備份全站資料 (匯出 JSON)
 </button>
+<button 
+                    onClick={() => { 
+                      setShowUserDropdown(false); 
+                      handleRestoreEntireApp(); 
+                    }} 
+                    className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-amber-50 flex items-center gap-2 text-amber-700 font-black"
+                  >
+                    📂 從 JSON 還原全站資料
+                  </button>
                 </>
               )}
               <button onClick={() => { setShowUserDropdown(false); onLogout(); }} className="w-full text-left p-2.5 rounded-xl text-xs text-red-500 hover:bg-red-50 flex items-center gap-2 font-black">
