@@ -934,52 +934,81 @@ function TripSelector({
       alert("❌ 備份過程中發生未預期錯誤");
     }
   };
-  // 🔄 Wayne 管理員專用：從 JSON 檔案還原全站資料
-  const handleRestoreEntireApp = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    
-    input.onchange = async (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      const file = target.files?.[0];
-      if (!file) return;
+// 🔄 Wayne 管理員專用：智能合併還原全站資料（保留備份後新成員與新行程）
+const handleRestoreEntireApp = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
 
-      const confirmRestore = confirm(`⚠️ 警告：即將從備份檔「${file.name}」還原全站資料！\n這將會覆蓋或寫入資料庫，確定要繼續嗎？`);
-      if (!confirmRestore) return;
+  input.onchange = async (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const jsonContent = event.target?.result as string;
-          const backupData = JSON.parse(jsonContent);
+    const confirmRestore = confirm(`⚠️ 確定要從備份檔「${file.name}」進行智能還原？\n系統將還原所有行程資料，並自動保留備份後新增的用戶與新行程。`);
+    if (!confirmRestore) return;
 
-          if (!Array.isArray(backupData)) {
-            alert("❌ 格式錯誤：此 JSON 備份檔無效（必須是資料陣列）。");
-            return;
-          }
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const jsonContent = event.target?.result as string;
+        const backupData = JSON.parse(jsonContent);
 
-          // 逐筆將備份資料寫回 Supabase 的 trips 表格
-          for (const item of backupData) {
-            if (!item.id) continue;
-            await supabase.from('trips').upsert({
-              id: item.id,
-              content: item.content
-            });
-          }
-
-          alert("✅ 全站資料還原成功！\n頁面即將重新整理以載入最新資料。");
-          window.location.reload();
-        } catch (err) {
-          console.error(err);
-          alert("❌ 還原失敗：解析 JSON 檔案時發生錯誤。");
+        if (!Array.isArray(backupData)) {
+          alert("❌ 格式錯誤：此 JSON 備份檔無效（必須是資料陣列）。");
+          return;
         }
-      };
-      reader.readAsText(file);
-    };
 
-    input.click();
+        // 1. 抓取線上目前最新的全站資料以進行比對
+        const { data: currentData } = await supabase.from('trips').select('*');
+        const currentMap = new Map((currentData || []).map(item => [item.id, item.content]));
+
+        for (const item of backupData) {
+          if (!item.id) continue;
+
+          let finalContent = item.content;
+
+          // 智能合併：使用者名冊（舊備份名單 + 線上新註冊成員，去重複保留）
+          if (item.id === '__app_members__' && Array.isArray(item.content)) {
+            const currentMembers = Array.isArray(currentMap.get('__app_members__')) ? currentMap.get('__app_members__') : [];
+            const memberMap = new Map();
+            // 先放線上現有的
+            currentMembers.forEach((m: any) => m && (m.username || m.id) && memberMap.set(m.username || m.id, m));
+            // 備份檔內的舊資料覆蓋/合併進去
+            item.content.forEach((m: any) => m && (m.username || m.id) && memberMap.set(m.username || m.id, m));
+            finalContent = Array.from(memberMap.values());
+          }
+
+          // 智能合併：行程總清單（舊備份行程 + 備份後線上新開的行程，去重複保留）
+          if (item.id === '__app_trips__' && Array.isArray(item.content)) {
+            const currentTrips = Array.isArray(currentMap.get('__app_trips__')) ? currentMap.get('__app_trips__') : [];
+            const tripMap = new Map();
+            // 先保留目前線上所有行程清單（包含備份後新建立的）
+            currentTrips.forEach((t: any) => t && t.id && tripMap.set(t.id, t));
+            // 備份檔內的舊行程清單合併覆蓋回正確版本
+            item.content.forEach((t: any) => t && t.id && tripMap.set(t.id, t));
+            finalContent = Array.from(tripMap.values());
+          }
+
+          // 寫回資料庫
+          await supabase.from('trips').upsert({
+            id: item.id,
+            content: finalContent
+          });
+        }
+
+        alert("✅ 智能還原成功！\n舊資料已還原，備份後新增的用戶與新行程亦全數完整保留。");
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        alert("❌ 還原失敗：解析或寫入資料時發生錯誤。");
+      }
+    };
+    reader.readAsText(file);
   };
+
+  input.click();
+};
   const [showJoinTripModal, setShowJoinTripModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [showUserAdmin, setShowUserAdmin] = useState(false);
@@ -2192,8 +2221,8 @@ function MainApp({
 
 // 🛡️ 3小時/5天 歷史快照備份機制 (自動管理)
 const handleHistoricalBackup = async (currentData: any) => {
-  const BACKUP_INTERVAL = 3 * 60 * 60 * 1000; // 3 小時的毫秒數
-  const RETENTION_PERIOD = 5 * 24 * 60 * 60 * 1000; // 5 天的毫秒數
+  const BACKUP_INTERVAL = 1 * 60 * 60 * 1000 // 1 小時 (3600000 毫秒)
+  const RETENTION_PERIOD = 3 * 24 * 60 * 60 * 1000 // 3 天 (259200000 毫秒)
   const now = Date.now();
   const lastBackupKey = `last_backup_time_${tripData.id}`;
   const lastBackupTime = parseInt(localStorage.getItem(lastBackupKey) || '0', 10);
